@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pelican on a Bicycle - SVG 2D Animation</title>
+    <!-- Tailwind CSS CDN for modern UI controls -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Custom styling for SVG canvas container */
+        .svg-container {
+            box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Custom range slider thumb styling */
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #0284c7;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            transition: transform 0.1s ease;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        /* Soft pulsing animation for badge */
+        @keyframes pulse-gentle {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.85; transform: scale(0.98); }
+        }
+        .pulse-live {
+            animation: pulse-gentle 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between overflow-x-hidden antialiased">
+
+    <!-- Top Navigation Header -->
+    <header class="w-full border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-amber-400 flex items-center justify-center shadow-lg shadow-sky-500/20">
+                    <!-- Pelican Icon -->
+                    <svg class="w-6 h-6 text-slate-900" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M21 9c0-1.1-.9-2-2-2h-3.18C15.4 5.84 14.3 5 13 5c-1.86 0-3.41 1.28-3.86 3H4c-1.1 0-2 .9-2 2v2c0 1.1.9 2 2 2h1.18c.42 1.16 1.52 2 2.82 2 1.86 0 3.41-1.28 3.86-3H19c1.1 0 2-.9 2-2V9z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-white leading-tight">Paddles & Pedals</h1>
+                    <p class="text-xs text-sky-400 font-medium">SVG Kinematics & Parallax Engine</p>
+                </div>
+            </div>
+
+            <!-- Header Quick Actions & Stats -->
+            <div class="flex items-center gap-4">
+                <div class="hidden sm:flex items-center gap-6 text-xs bg-slate-800/80 border border-slate-700/60 rounded-full px-4 py-1.5">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live"></span>
+                        <span class="text-slate-400">Cadence:</span>
+                        <span id="stat-rpm" class="font-bold text-slate-200">60 RPM</span>
+                    </div>
+                    <div class="h-3 w-[1px] bg-slate-700"></div>
+                    <div>
+                        <span class="text-slate-400">Speed:</span>
+                        <span id="stat-speed" class="font-bold text-sky-400">18.0 km/h</span>
+                    </div>
+                    <div class="h-3 w-[1px] bg-slate-700"></div>
+                    <div>
+                        <span class="text-slate-400">Distance:</span>
+                        <span id="stat-dist" class="font-bold text-amber-400">0.00 km</span>
+                    </div>
+                </div>
+
+                <button id="btn-bell" title="Ring Bicycle Bell" class="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-all flex items-center justify-center active:scale-95">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-6 justify-center">
+
+        <!-- Animation Canvas Window -->
+        <div class="relative w-full aspect-[16/9] max-h-[640px] bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl svg-container group">
+            
+            <!-- Main SVG Canvas -->
+            <svg id="svg-stage" class="w-full h-full block" viewBox="0 0 1200 675" preserveAspectRatio="xMidYMid slice">
+                <defs>
+                    <!-- Sky Gradients (Day, Sunset, Night dynamically adjusted or layered) -->
+                    <linearGradient id="skyGradDay" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#38bdf8"/>
+                        <stop offset="60%" stop-color="#bae6fd"/>
+                        <stop offset="100%" stop-color="#e0f2fe"/>
+                    </linearGradient>
+
+                    <linearGradient id="skyGradSunset" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#4c1d95"/>
+                        <stop offset="45%" stop-color="#c026d3"/>
+                        <stop offset="75%" stop-color="#f97316"/>
+                        <stop offset="100%" stop-color="#fde047"/>
+                    </linearGradient>
+
+                    <linearGradient id="skyGradNight" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#090d16"/>
+                        <stop offset="60%" stop-color="#0f172a"/>
+                        <stop offset="100%" stop-color="#1e293b"/>
+                    </linearGradient>
+
+                    <!-- Distant Mountains Gradient -->
+                    <linearGradient id="mountainGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#64748b" stop-opacity="0.5"/>
+                        <stop offset="100%" stop-color="#334155" stop-opacity="0.8"/>
+                    </linearGradient>
+
+                    <!-- Near Hills Gradient -->
+                    <linearGradient id="hillGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#34d399"/>
+                        <stop offset="100%" stop-color="#059669"/>
+                    </linearGradient>
+
+                    <!-- Pelican Beak Pouch Gradient -->
+                    <linearGradient id="beakGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#fbbf24"/>
+                        <stop offset="70%" stop-color="#f59e0b"/>
+                        <stop offset="100%" stop-color="#d97706"/>
+                    </linearGradient>
+
+                    <!-- Pelican Feather Body Gradient -->
+                    <linearGradient id="featherGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#ffffff"/>
+                        <stop offset="85%" stop-color="#f1f5f9"/>
+                        <stop offset="100%" stop-color="#cbd5e1"/>
+                    </linearGradient>
+
+                    <!-- Bicycle Frame Metallic Gradient -->
+                    <linearGradient id="frameGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#ef4444"/>
+                        <stop offset="50%" stop-color="#f87171"/>
+                        <stop offset="100%" stop-color="#dc2626"/>
+                    </linearGradient>
+
+                    <!-- Wheel Rim Metallic Gradient -->
+                    <linearGradient id="rimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#94a3b8"/>
+                        <stop offset="50%" stop-color="#f8fafc"/>
+                        <stop offset="100%" stop-color="#64748b"/>
+                    </linearGradient>
+
+                    <!-- Drop Shadow Filter for Depth -->
+                    <filter id="dropShadow" x="-10%" y="-10%" width="130%" height="130%">
+                        <feDropShadow dx="0" dy="12" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.35"/>
+                    </filter>
+                    
+                    <filter id="groundShadow" x="-20%" y="-50%" width="140%" height="200%">
+                        <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
+                        <feOffset dx="0" dy="4" result="offsetblur"/>
+                        <feComponentTransfer>
+                            <feFuncA type="linear" slope="0.3"/>
+                        </feComponentTransfer>
+                        <feMerge> 
+                            <feMergeNode/>
+                        </feMerge>
+                    </filter>
+                </defs>
+
+                <!-- 1. SKY BACKGROUND -->
+                <rect id="sky-rect" x="0" y="0" width="1200" height="675" fill="url(#skyGradDay)"/>
+
+                <!-- CELESTIAL BODY (Sun / Moon) -->
+                <g id="celestial-group" transform="translate(1000, 120)">
+                    <circle id="sun-glow" cx="0" cy="0" r="50" fill="#fef08a" opacity="0.4" />
+                    <circle id="sun-body" cx="0" cy="0" r="34" fill="#fde047" />
+                </g>
+
+                <!-- PARALLAX LAYER 1: CLOUDS -->
+                <g id="layer-clouds"></g>
+
+                <!-- PARALLAX LAYER 2: MOUNTAINS -->
+                <g id="layer-mountains"></g>
+
+                <!-- PARALLAX LAYER 3: MIDGROUND TREES & LIGHTHOUSE -->
+                <g id="layer-midground"></g>
+
+                <!-- PARALLAX LAYER 4: FENCE / ROAD SIDE POSTS -->
+                <g id="layer-fence"></g>
+
+                <!-- 2. ROAD & FOREGROUND -->
+                <g id="layer-road">
+                    <!-- Ground Base -->
+                    <rect x="0" y="520" width="1200" height="155" fill="#334155"/>
+                    <!-- Road Surface -->
+                    <rect x="0" y="520" width="1200" height="90" fill="#1e293b"/>
+                    <!-- Curb Top Border -->
+                    <rect x="0" y="515" width="1200" height="5" fill="#94a3b8"/>
+                    <!-- Sidewalk Top -->
+                    <rect x="0" y="490" width="1200" height="25" fill="#475569"/>
+                    <!-- Sidewalk Paving Lines Group (Animated) -->
+                    <g id="sidewalk-lines"></g>
+                    <!-- Road Dash Markings (Animated) -->
+                    <g id="road-dashes"></g>
+                </g>
+
+                <!-- 3. MAIN CHARACTER & BICYCLE GROUP (CENTERED) -->
+                <g id="pelican-bike-group" transform="translate(420, 240)" filter="url(#dropShadow)">
+                    
+                    <!-- BICYCLE GROUND SHADOW -->
+                    <ellipse id="bike-shadow" cx="190" cy="315" rx="190" ry="14" fill="#020617" opacity="0.4" />
+
+                    <!-- LEFT (BACK) LEG & PEDAL (Rendered behind bike frame) -->
+                    <g id="left-leg-group">
+                        <!-- Upper Leg (Thigh) -->
+                        <line id="left-thigh" stroke="#ea580c" stroke-width="14" stroke-linecap="round"/>
+                        <!-- Lower Leg (Shin) -->
+                        <line id="left-shin" stroke="#f97316" stroke-width="10" stroke-linecap="round"/>
+                        <!-- Webbed Foot / Pedal Attachment -->
+                        <polygon id="left-foot" fill="#d97706"/>
+                    </g>
+
+                    <!-- BACK WHEEL -->
+                    <g id="back-wheel" transform="translate(60, 250)">
+                        <!-- Tire -->
+                        <circle cx="0" cy="0" r="62" fill="none" stroke="#0f172a" stroke-width="14"/>
+                        <!-- Rim -->
+                        <circle cx="0" cy="0" r="55" fill="none" stroke="url(#rimGrad)" stroke-width="4"/>
+                        <!-- Inner Hub -->
+                        <circle cx="0" cy="0" r="10" fill="#475569"/>
+                        <!-- Spokes Group -->
+                        <g id="back-wheel-spokes" stroke="#cbd5e1" stroke-width="1.5" opacity="0.85"></g>
+                    </g>
+
+                    <!-- FRONT WHEEL -->
+                    <g id="front-wheel" transform="translate(320, 250)">
+                        <!-- Tire -->
+                        <circle cx="0" cy="0" r="62" fill="none" stroke="#0f172a" stroke-width="14"/>
+                        <!-- Rim -->
+                        <circle cx="0" cy="0" r="55" fill="none" stroke="url(#rimGrad)" stroke-width="4"/>
+                        <!-- Inner Hub -->
+                        <circle cx="0" cy="0" r="10" fill="#475569"/>
+                        <!-- Spokes Group -->
+                        <g id="front-wheel-spokes" stroke="#cbd5e1" stroke-width="1.5" opacity="0.85"></g>
+                    </g>
+
+                    <!-- BICYCLE FRAME -->
+                    <g id="bike-frame">
+                        <!-- Chainstay -->
+                        <line x1="60" y1="250" x2="180" y2="250" stroke="#dc2626" stroke-width="7" stroke-linecap="round"/>
+                        <!-- Seatstay -->
+                        <line x1="60" y1="250" x2="145" y2="150" stroke="#dc2626" stroke-width="6" stroke-linecap="round"/>
+                        <!-- Seat Tube -->
+                        <line x1="180" y1="250" x2="140" y2="135" stroke="#dc2626" stroke-width="8" stroke-linecap="round"/>
+                        <!-- Down Tube -->
+                        <line x1="180" y1="250" x2="285" y2="140" stroke="#dc2626" stroke-width="9" stroke-linecap="round"/>
+                        <!-- Top Tube -->
+                        <line x1="145" y1="150" x2="280" y2="140" stroke="#dc2626" stroke-width="7" stroke-linecap="round"/>
+                        <!-- Front Fork -->
+                        <line x1="285" y1="140" x2="320" y2="250" stroke="#475569" stroke-width="7" stroke-linecap="round"/>
+                        <!-- Handlebar Post & Bars -->
+                        <path d="M 285,140 L 275,85 L 250,90" fill="none" stroke="#94a3b8" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                        <!-- Rubber Grips -->
+                        <path d="M 255,90 L 240,90" fill="none" stroke="#0f172a" stroke-width="9" stroke-linecap="round"/>
+
+                        <!-- Saddle Seat -->
+                        <path d="M 115,130 Q 140,125 165,133 Q 150,142 125,140 Z" fill="#1e293b" stroke="#0f172a" stroke-width="2"/>
+
+                        <!-- Front Basket -->
+                        <g id="bike-basket" transform="translate(285, 80)">
+                            <rect x="0" y="0" width="45" height="35" rx="5" fill="#d97706" opacity="0.9" stroke="#78350f" stroke-width="2"/>
+                            <!-- Basket Grid Pattern -->
+                            <path d="M 11,0 V 35 M 22,0 V 35 M 33,0 V 35 M 0,11 H 45 M 0,22 H 45" stroke="#78350f" stroke-width="1.5" opacity="0.6"/>
+                            <!-- Cute Fish in Basket -->
+                            <g id="basket-fish" transform="translate(12, 5)">
+                                <path d="M 5,12 C 12,4 22,8 25,14 C 22,20 12,24 5,16 Z" fill="#38bdf8"/>
+                                <polygon points="23,14 32,8 30,14 32,20" fill="#0284c7"/>
+                                <circle cx="9" cy="12" r="1.5" fill="#0f172a"/>
+                            </g>
+                        </g>
+
+                        <!-- Bottom Bracket / Main Chainring Gear -->
+                        <circle cx="180" cy="250" r="22" fill="#64748b" stroke="#334155" stroke-width="3"/>
+                        <circle cx="180" cy="250" r="15" fill="#475569"/>
+                    </g>
+
+                    <!-- CHAIN & PEDAL CRANKS -->
+                    <g id="bike-chain-cranks">
+                        <!-- Chain loop -->
+                        <path d="M 60,236 L 180,230 A 20,20 0 0,1 180,270 L 60,264 A 14,14 0 0,1 60,236 Z" fill="none" stroke="#334155" stroke-width="4" stroke-dasharray="6,4"/>
+                        
+                        <!-- Left Crank Line (Back) -->
+                        <line id="left-crank" x1="180" y1="250" x2="150" y2="280" stroke="#94a3b8" stroke-width="6" stroke-linecap="round"/>
+                        <!-- Left Pedal Bar -->
+                        <rect id="left-pedal" x="140" y="275" width="18" height="7" rx="3" fill="#1e293b"/>
+
+                        <!-- Right Crank Line (Front) -->
+                        <line id="right-crank" x1="180" y1="250" x2="210" y2="220" stroke="#cbd5e1" stroke-width="7" stroke-linecap="round"/>
+                        <!-- Right Pedal Bar -->
+                        <rect id="right-pedal" x="202" y="216" width="18" height="7" rx="3" fill="#0f172a"/>
+                    </g>
+
+                    <!-- PELICAN BODY & RIG -->
+                    <g id="pelican-character">
+                        <!-- TAIL FEATHERS -->
+                        <g id="pelican-tail" transform="translate(100, 110)">
+                            <path d="M 0,15 C -20,10 -25,-5 -12,-15 C -5,-8 -2,5 5,12 Z" fill="#cbd5e1"/>
+                            <path d="M 5,20 C -15,20 -22,5 -8,-5 C -2,2 3,12 8,18 Z" fill="#94a3b8"/>
+                        </g>
+
+                        <!-- MAIN TORSO / BODY -->
+                        <path id="pelican-torso" d="M 120,135 C 90,120 95,70 140,65 C 175,60 195,90 190,135 C 180,165 140,160 120,135 Z" fill="url(#featherGrad)" stroke="#e2e8f0" stroke-width="2"/>
+
+                        <!-- NECK & HEAD GROUP (Bobbing Motion Target) -->
+                        <g id="pelican-head-neck" transform="translate(165, 75)">
+                            <!-- S-CURVE NECK -->
+                            <path d="M -5,20 C 5,-10 35,-5 30,-45 C 28,-60 15,-70 22,-85" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round"/>
+                            <path d="M -5,20 C 5,-10 35,-5 30,-45 C 28,-60 15,-70 22,-85" fill="none" stroke="#f1f5f9" stroke-width="22" stroke-linecap="round"/>
+
+                            <!-- HEAD BASE -->
+                            <g id="head-group" transform="translate(22, -88)">
+                                <!-- Head Feather Crest -->
+                                <path d="M -8,-8 C -22,-20 -15,-5 -24,2 C -15,4 -8,0 -2,-2 Z" fill="#cbd5e1"/>
+                                
+                                <!-- Main Skull -->
+                                <circle cx="0" cy="0" r="18" fill="#ffffff"/>
+
+                                <!-- Cute Captain Cap (Accessory - Toggleable) -->
+                                <g id="accessory-cap" transform="translate(-4, -14)">
+                                    <path d="M -12,2 Q 4,-12 20,2 Z" fill="#0369a1"/>
+                                    <path d="M 10,2 Q 22,0 26,8 Q 14,8 10,2 Z" fill="#0f172a"/>
+                                    <circle cx="4" cy="-3" r="3" fill="#fbbf24"/>
+                                </g>
+
+                                <!-- EYE -->
+                                <circle cx="6" cy="-4" r="4.5" fill="#0f172a"/>
+                                <circle cx="7.5" cy="-5.5" r="1.5" fill="#ffffff"/>
+                                <!-- Expressive Eyebrow -->
+                                <path d="M 0,-10 Q 7,-13 12,-8" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
+
+                                <!-- BIG PELICAN BEAK & POUCH -->
+                                <g id="beak-group" transform="translate(10, -2)">
+                                    <!-- Upper Beak -->
+                                    <path id="upper-beak" d="M 0,-6 L 65,2 C 70,4 65,9 55,8 L 0,3 Z" fill="#f59e0b" stroke="#d97706" stroke-width="1.5"/>
+                                    <path d="M 50,4 C 62,4 66,5 60,7 Z" fill="#ea580c"/> <!-- Beak Tip Hook -->
+
+                                    <!-- Lower Flexible Pouch (Dynamic Jiggle) -->
+                                    <path id="beak-pouch" d="M 2,3 C 15,25 45,28 54,8 Z" fill="url(#beakGrad)" stroke="#d97706" stroke-width="1.5"/>
+                                    <!-- Pouch Texture Lines -->
+                                    <path d="M 15,9 Q 22,20 32,15 M 28,8 Q 35,20 44,12" fill="none" stroke="#d97706" stroke-width="1" opacity="0.5"/>
+                                </g>
+                            </g>
+                        </g>
+
+                        <!-- WING (Holding Handlebars) -->
+                        <g id="pelican-wing">
+                            <!-- Outer Wing Segment -->
+                            <path id="wing-path" d="M 145,85 C 170,85 210,105 245,92 C 220,120 170,135 135,115 Z" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/>
+                            <!-- Wing Feather Lines -->
+                            <path d="M 170,95 Q 210,108 235,94 M 160,105 Q 195,118 220,106" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+                        </g>
+
+                        <!-- RIGHT (FRONT) LEG (Rendered in front of bicycle frame) -->
+                        <g id="right-leg-group">
+                            <!-- Upper Leg (Thigh) -->
+                            <line id="right-thigh" stroke="#f97316" stroke-width="15" stroke-linecap="round"/>
+                            <!-- Lower Leg (Shin) -->
+                            <line id="right-shin" stroke="#fb923c" stroke-width="11" stroke-linecap="round"/>
+                            <!-- Webbed Foot / Ankle Joint -->
+                            <polygon id="right-foot" fill="#f59e0b"/>
+                        </g>
+                    </g>
+                </g>
+
+                <!-- FOREGROUND ANIMATED SPEED LINES (ON TURBO) -->
+                <g id="speed-lines" opacity="0" stroke="#ffffff" stroke-width="3" stroke-linecap="round">
+                    <line x1="1200" y1="100" x2="1050" y2="100" />
+                    <line x1="1200" y1="240" x2="980" y2="240" />
+                    <line x1="1200" y1="380" x2="1080" y2="380" />
+                    <line x1="1200" y1="500" x2="920" y2="500" />
+                </g>
+            </svg>
+
+            <!-- Floating Overlay Badges / Dynamic Weather Indicator -->
+            <div class="absolute top-4 left-4 flex gap-2">
+                <span id="env-badge" class="px-3 py-1 rounded-full text-xs font-semibold bg-slate-900/80 border border-slate-700 text-sky-300 backdrop-blur-md flex items-center gap-1.5 shadow-lg">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                    Sunny Coast
+                </span>
+                <span id="speed-badge" class="px-3 py-1 rounded-full text-xs font-semibold bg-slate-900/80 border border-slate-700 text-emerald-400 backdrop-blur-md shadow-lg">
+                    Cruising Pace
+                </span>
+            </div>
+        </div>
+
+        <!-- Animation Control Dashboard -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+
+            <!-- Primary Playback & Speed Controls (MD: 7 Cols) -->
+            <div class="md:col-span-7 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-5 flex flex-col justify-between gap-4 backdrop-blur-md shadow-xl">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                        <h2 class="font-bold text-slate-200">Riding Controls</h2>
+                    </div>
+                    <span class="text-xs text-slate-400">IK Rig Physics: <span class="text-emerald-400 font-mono">Active</span></span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                    <!-- Play / Pause Button -->
+                    <button id="btn-play" class="w-full py-3 px-5 rounded-xl bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-400 hover:to-sky-500 text-white font-bold text-sm shadow-lg shadow-sky-500/25 flex items-center justify-center gap-2 transition-all active:scale-95">
+                        <svg id="icon-pause" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                        <svg id="icon-play" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        <span id="lbl-play">Pause Ride</span>
+                    </button>
+
+                    <!-- Turbo Boost Button -->
+                    <button id="btn-turbo" class="w-full py-3 px-5 rounded-xl bg-slate-700 hover:bg-slate-600 border border-slate-600 text-amber-300 font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95">
+                        <svg class="w-5 h-5 text-amber-400" fill="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <span>Sprint Boost</span>
+                    </button>
+                </div>
+
+                <!-- Speed Slider -->
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span class="text-slate-400">Pedaling Speed / Cadence</span>
+                        <span id="val-speed-multiplier" class="text-sky-400 font-mono">1.0x (60 RPM)</span>
+                    </div>
+                    <input id="slider-speed" type="range" min="0.2" max="2.5" step="0.1" value="1.0" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Environment & Customization Controls (MD: 5 Cols) -->
+            <div class="md:col-span-5 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-5 flex flex-col justify-between gap-4 backdrop-blur-md shadow-xl">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                        <h2 class="font-bold text-slate-200">Environment & Style</h2>
+                    </div>
+                </div>
+
+                <!-- Time of Day Selector Buttons -->
+                <div class="grid grid-cols-3 gap-2">
+                    <button id="btn-tod-day" class="py-2 px-3 rounded-xl bg-sky-500/20 border border-sky-500/50 text-sky-300 font-semibold text-xs transition-all">
+                        ☀️ Day
+                    </button>
+                    <button id="btn-tod-sunset" class="py-2 px-3 rounded-xl bg-slate-700 border border-slate-600 text-slate-300 hover:bg-slate-600 font-semibold text-xs transition-all">
+                        🌅 Sunset
+                    </button>
+                    <button id="btn-tod-night" class="py-2 px-3 rounded-xl bg-slate-700 border border-slate-600 text-slate-300 hover:bg-slate-600 font-semibold text-xs transition-all">
+                        🌙 Night
+                    </button>
+                </div>
+
+                <!-- Toggles for Accessories & Sound -->
+                <div class="grid grid-cols-2 gap-3 pt-1">
+                    <label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/40 border border-slate-700/50 cursor-pointer hover:bg-slate-900/60 transition-all">
+                        <span class="text-xs font-medium text-slate-300">Captain Cap</span>
+                        <input id="chk-cap" type="checkbox" checked class="w-4 h-4 rounded accent-sky-500 bg-slate-800 border-slate-600">
+                    </label>
+                    <label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/40 border border-slate-700/50 cursor-pointer hover:bg-slate-900/60 transition-all">
+                        <span class="text-xs font-medium text-slate-300">Pedal Sound</span>
+                        <input id="chk-sound" type="checkbox" checked class="w-4 h-4 rounded accent-sky-500 bg-slate-800 border-slate-600">
+                    </label>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="w-full border-t border-slate-800 py-4 text-center text-xs text-slate-500">
+        <p>Dynamic 2D Vector Physics & Kinematics Engine — SVG Pelican Cyclist</p>
+    </footer>
+
+
+    <!-- JAVASCRIPT ANIMATION & INVERSE KINEMATICS ENGINE -->
+    <script>
+        // ============================================================================
+        // 1. GLOBAL STATE & PARAMETERS
+        // ============================================================================
+        const state = {
+            isPlaying: true,
+            speedMultiplier: 1.0,
+            baseSpeed: 1.0,
+            isTurbo: false,
+            timeOfDay: 'day', // 'day', 'sunset', 'night'
+            capVisible: true,
+            soundEnabled: true,
+
+            // Animation timing
+            pedalAngle: 0, // In radians
+            distanceTraveled: 0, // In meters
+
+            // Audio Context
+            audioCtx: null
+        };
+
+        // Bike Rig Geometry Specs (Local coordinate system in SVG)
+        // Bottom Bracket (Crank Axis Center) = (180, 250) relative to bike group
+        const RIG = {
+            hip: { x: 145, y: 130 },       // Hip pivot joint on saddle
+            crankCenter: { x: 180, y: 250 },// Bottom bracket center
+            crankRadius: 32,               // Pedal circle radius
+            thighLen: 85,                  // Upper leg femur length
+            shinLen: 88,                   // Lower leg tibia length
+            footLength: 22                 // Foot size offset
+        };
+
+        // DOM Element Caches
+        const DOM = {
+            playBtn: document.getElementById('btn-play'),
+            lblPlay: document.getElementById('lbl-play'),
+            iconPlay: document.getElementById('icon-play'),
+            iconPause: document.getElementById('icon-pause'),
+            turboBtn: document.getElementById('btn-turbo'),
+            speedSlider: document.getElementById('slider-speed'),
+            valSpeedMultiplier: document.getElementById('val-speed-multiplier'),
+            bellBtn: document.getElementById('btn-bell'),
+
+            // Stat displays
+            statRpm: document.getElementById('stat-rpm'),
+            statSpeed: document.getElementById('stat-speed'),
+            statDist: document.getElementById('stat-dist'),
+            speedBadge: document.getElementById('speed-badge'),
+            envBadge: document.getElementById('env-badge'),
+
+            // Customization toggles
+            todDay: document.getElementById('btn-tod-day'),
+            todSunset: document.getElementById('btn-tod-sunset'),
+            todNight: document.getElementById('btn-tod-night'),
+            chkCap: document.getElementById('chk-cap'),
+            chkSound: document.getElementById('chk-sound'),
+            accessoryCap: document.getElementById('accessory-cap'),
+
+            // SVG Rig elements
+            skyRect: document.getElementById('sky-rect'),
+            celestialGroup: document.getElementById('celestial-group'),
+            sunBody: document.getElementById('sun-body'),
+            sunGlow: document.getElementById('sun-glow'),
+            speedLines: document.getElementById('speed-lines'),
+            pelicanGroup: document.getElementById('pelican-bike-group'),
+            headNeckGroup: document.getElementById('pelican-head-neck'),
+            beakPouch: document.getElementById('beak-pouch'),
+            wingPath: document.getElementById('wing-path'),
+            bikeShadow: document.getElementById('bike-shadow'),
+
+            // Cranks & Pedals
+            leftCrank: document.getElementById('left-crank'),
+            rightCrank: document.getElementById('right-crank'),
+            leftPedal: document.getElementById('left-pedal'),
+            rightPedal: document.getElementById('right-pedal'),
+
+            // Legs
+            leftThigh: document.getElementById('left-thigh'),
+            leftShin: document.getElementById('left-shin'),
+            leftFoot: document.getElementById('left-foot'),
+            rightThigh: document.getElementById('right-thigh'),
+            rightShin: document.getElementById('right-shin'),
+            rightFoot: document.getElementById('right-foot'),
+
+            // Wheels
+            backWheelSpokes: document.getElementById('back-wheel-spokes'),
+            frontWheelSpokes: document.getElementById('front-wheel-spokes'),
+
+            // Background Parallax Containers
+            layerClouds: document.getElementById('layer-clouds'),
+            layerMountains: document.getElementById('layer-mountains'),
+            layerMidground: document.getElementById('layer-midground'),
+            layerFence: document.getElementById('layer-fence'),
+            sidewalkLines: document.getElementById('sidewalk-lines'),
+            roadDashes: document.getElementById('road-dashes')
+        };
+
+
+        // ============================================================================
+        // 2. PROCEDURAL SCENERY & PARALLAX GENERATOR
+        // ============================================================================
+        
+        // Generate wheel spokes
+        function initSpokes() {
+            const createSpokes = (targetG) => {
+                let html = '';
+                const numSpokes = 16;
+                for (let i = 0; i < numSpokes; i++) {
+                    const angle = (i * 360 / numSpokes) * (Math.PI / 180);
+                    const x2 = Math.cos(angle) * 54;
+                    const y2 = Math.sin(angle) * 54;
+                    html += `<line x1="0" y1="0" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />`;
+                }
+                targetG.innerHTML = html;
+            };
+            createSpokes(DOM.backWheelSpokes);
+            createSpokes(DOM.frontWheelSpokes);
+        }
+
+        // Generate Clouds (Layer 1)
+        function initClouds() {
+            let html = '';
+            const cloudSpecs = [
+                { x: 100, y: 80, scale: 0.9 },
+                { x: 450, y: 120, scale: 0.6 },
+                { x: 800, y: 60, scale: 1.1 },
+                { x: 1150, y: 110, scale: 0.75 }
+            ];
+            cloudSpecs.forEach((c, idx) => {
+                html += `
+                <g class="cloud-item" data-base-x="${c.x}" data-y="${c.y}" transform="translate(${c.x}, ${c.y}) scale(${c.scale})" opacity="0.85">
+                    <path d="M 20,40 Q 25,20 45,20 Q 55,10 75,15 Q 95,5 115,20 Q 135,15 145,35 Q 160,40 150,55 Q 140,65 110,60 Q 60,65 20,60 Q 5,50 20,40 Z" fill="#ffffff"/>
+                </g>`;
+            });
+            DOM.layerClouds.innerHTML = html;
+        }
+
+        // Generate Distant Mountains (Layer 2)
+        function initMountains() {
+            let html = '';
+            // Repeating mountain path blocks
+            const points = "0,420 120,310 250,420 380,280 520,420 680,330 820,420 950,290 1100,420 1250,320 1400,420";
+            html = `
+            <g id="mountain-group-1" transform="translate(0, 0)">
+                <polygon points="${points}" fill="url(#mountainGrad)"/>
+            </g>
+            <g id="mountain-group-2" transform="translate(1400, 0)">
+                <polygon points="${points}" fill="url(#mountainGrad)"/>
+            </g>`;
+            DOM.layerMountains.innerHTML = html;
+        }
+
+        // Generate Midground Coastal Trees & Lighthouse (Layer 3)
+        function initMidground() {
+            let html = '';
+            // Generate items along 0 to 2400 width for seamless loop
+            const items = [
+                { type: 'tree', x: 80 }, { type: 'lighthouse', x: 300 },
+                { type: 'tree', x: 550 }, { type: 'pine', x: 750 },
+                { type: 'tree', x: 1000 }, { type: 'pine', x: 1250 },
+                { type: 'lighthouse', x: 1500 }, { type: 'tree', x: 1750 },
+                { type: 'pine', x: 1950 }, { type: 'tree', x: 2200 }
+            ];
+
+            let content = '';
+            items.forEach(item => {
+                if (item.type === 'tree') {
+                    content += `
+                    <g transform="translate(${item.x}, 380)">
+                        <rect x="18" y="50" width="8" height="40" fill="#78350f" />
+                        <circle cx="22" cy="40" r="24" fill="#10b981" />
+                        <circle cx="10" cy="35" r="18" fill="#059669" />
+                        <circle cx="34" cy="35" r="18" fill="#34d399" />
+                    </g>`;
+                } else if (item.type === 'pine') {
+                    content += `
+                    <g transform="translate(${item.x}, 370)">
+                        <rect x="14" y="60" width="6" height="30" fill="#451a03" />
+                        <polygon points="17,10 0,40 34,40" fill="#047857" />
+                        <polygon points="17,25 -4,62 38,62" fill="#065f46" />
+                    </g>`;
+                } else if (item.type === 'lighthouse') {
+                    content += `
+                    <g transform="translate(${item.x}, 330)">
+                        <polygon points="10,130 18,30 32,30 40,130" fill="#f8fafc" stroke="#e2e8f0"/>
+                        <polygon points="13,90 15,70 35,70 37,90" fill="#ef4444" />
+                        <polygon points="16,45 17,30 33,30 34,45" fill="#ef4444" />
+                        <!-- Top Light Chamber -->
+                        <rect x="18" y="14" width="14" height="16" fill="#fef08a" stroke="#0f172a" stroke-width="2"/>
+                        <polygon points="14,14 25,0 36,14" fill="#0f172a" />
+                    </g>`;
+                }
+            });
+
+            html = `
+            <g id="midground-group-1" transform="translate(0, 0)">${content}</g>
+            <g id="midground-group-2" transform="translate(2400, 0)">${content}</g>`;
+            DOM.layerMidground.innerHTML = html;
+        }
+
+        // Generate Fence posts (Layer 4)
+        function initFence() {
+            let content = '';
+            for (let x = 0; x < 2400; x += 90) {
+                content += `
+                <g transform="translate(${x}, 460)">
+                    <rect x="0" y="0" width="8" height="35" rx="2" fill="#92400e" stroke="#451a03" stroke-width="1"/>
+                    <line x1="-45" y1="10" x2="45" y2="10" stroke="#b45309" stroke-width="3"/>
+                    <line x1="-45" y1="24" x2="45" y2="24" stroke="#b45309" stroke-width="3"/>
+                </g>`;
+            }
+            DOM.layerFence.innerHTML = `
+            <g id="fence-group-1" transform="translate(0, 0)">${content}</g>
+            <g id="fence-group-2" transform="translate(2400, 0)">${content}</g>`;
+        }
+
+        // Generate Sidewalk & Road Lines
+        function initRoadMarkings() {
+            let sidewalkHTML = '';
+            for (let x = 0; x < 1600; x += 60) {
+                sidewalkHTML += `<line x1="${x}" y1="490" x2="${x}" y2="515" stroke="#334155" stroke-width="2"/>`;
+            }
+            DOM.sidewalkLines.innerHTML = sidewalkHTML;
+
+            let dashesHTML = '';
+            for (let x = 0; x < 1600; x += 100) {
+                dashesHTML += `<rect x="${x}" y="560" width="50" height="8" rx="4" fill="#f59e0b" opacity="0.85"/>`;
+            }
+            DOM.roadDashes.innerHTML = dashesHTML;
+        }
+
+
+        // ============================================================================
+        // 3. MATHEMATICAL INVERSE KINEMATICS (IK) FOR PELICAN LEGS
+        // ============================================================================
+        /**
+         * Calculates 2-joint planar inverse kinematics.
+         * Given Hip H(hx, hy) and Target Pedal P(px, py), computes Knee K(kx, ky).
+         * Leg stretches downwards and bends towards the front (knee forward).
+         */
+        function solveIK(hx, hy, px, py, L1, L2) {
+            const dx = px - hx;
+            const dy = py - hy;
+            const dist = Math.hypot(dx, dy);
+
+            // Clamp distance to avoid triangle inequality breakdown (over-extension)
+            const maxDist = (L1 + L2) * 0.995;
+            const minDist = Math.abs(L1 - L2) * 1.05;
+            const d = Math.max(minDist, Math.min(maxDist, dist));
+
+            // Angle from Hip to Pedal
+            const angleToTarget = Math.atan2(dy, dx);
+
+            // Cosine law for interior angle at Hip inside Triangle(Hip, Knee, Pedal)
+            const cosHipAngle = (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d);
+            const clampedCos = Math.max(-1, Math.min(1, cosHipAngle));
+            const hipAngleOffset = Math.acos(clampedCos);
+
+            // Knee bends forward (+ angle offset for pelican orientation)
+            const kneeAngle = angleToTarget + hipAngleOffset;
+
+            // Compute Knee Joint Position (kx, ky)
+            const kx = hx + L1 * Math.cos(kneeAngle);
+            const ky = hy + L1 * Math.sin(kneeAngle);
+
+            return { kx, ky };
+        }
+
+        /**
+         * Updates leg SVG lines & foot orientation based on crank angle
+         */
+        function updateLeg(thighEl, shinEl, footEl, crankAngle, isRightLeg) {
+            // 1. Calculate pedal position on crank circle
+            const px = RIG.crankCenter.x + RIG.crankRadius * Math.cos(crankAngle);
+            const py = RIG.crankCenter.y + RIG.crankRadius * Math.sin(crankAngle);
+
+            // 2. Solve IK for knee joint
+            const { kx, ky } = solveIK(
+                RIG.hip.x, RIG.hip.y,
+                px, py,
+                RIG.thighLen, RIG.shinLen
+            );
+
+            // 3. Update Upper Leg (Thigh) Line
+            thighEl.setAttribute('x1', RIG.hip.x);
+            thighEl.setAttribute('y1', RIG.hip.y);
+            thighEl.setAttribute('x2', kx.toFixed(1));
+            thighEl.setAttribute('y2', ky.toFixed(1));
+
+            // 4. Update Lower Leg (Shin) Line
+            shinEl.setAttribute('x1', kx.toFixed(1));
+            shinEl.setAttribute('y1', ky.toFixed(1));
+            shinEl.setAttribute('x2', px.toFixed(1));
+            shinEl.setAttribute('y2', py.toFixed(1));
+
+            // 5. Construct Webbed Foot Polygon at Pedal Target
+            // Foot tilts slightly with pedaling stroke
+            const footTilt = Math.sin(crankAngle) * 0.25;
+            const footWidth = 22;
+            const footHeight = 10;
+            
+            const p1x = px - 4;
+            const p1y = py - 3;
+            const p2x = px + footWidth;
+            const p2y = py + footTilt * 10;
+            const p3x = px + footWidth - 4;
+            const p3y = py + strokeWidthOffset(isRightLeg) + 6;
+
+            footEl.setAttribute('points', `${p1x},${p1y} ${p2x},${p2y} ${p3x},${p3y}`);
+        }
+
+        function strokeWidthOffset(isRight) {
+            return isRight ? 4 : 2;
+        }
+
+
+        // ============================================================================
+        // 4. AUDIO SYNTHESIS (WEB AUDIO API - NO EXTERNAL ASSETS)
+        // ============================================================================
+        function initAudio() {
+            if (!state.audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) state.audioCtx = new AudioContext();
+            }
+            if (state.audioCtx && state.audioCtx.state === 'suspended') {
+                state.audioCtx.resume();
+            }
+        }
+
+        // Realistic Bicycle Bell "Ding-Ding!"
+        function playBellSound() {
+            initAudio();
+            if (!state.audioCtx) return;
+
+            const ctx = state.audioCtx;
+            const now = ctx.currentTime;
+
+            const ring = (delay, freq) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now + delay);
+                osc.frequency.exponentialRampToValueAtTime(freq * 0.85, now + delay + 0.4);
+
+                gain.gain.setValueAtTime(0.4, now + delay);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.5);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.start(now + delay);
+                osc.stop(now + delay + 0.5);
+            };
+
+            // Double strike bell
+            ring(0.0, 2040);
+            ring(0.12, 2450);
+        }
+
+        // Soft rhythmic mechanical click when pedaling
+        function playPedalClick() {
+            if (!state.soundEnabled || !state.audioCtx) return;
+            const ctx = state.audioCtx;
+            if (ctx.state !== 'running') return;
+
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(120, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.03);
+
+            gain.gain.setValueAtTime(0.03, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.start();
+            osc.stop(ctx.currentTime + 0.035);
+        }
+
+
+        // ============================================================================
+        // 5. MAIN ANIMATION & PARALLAX RENDER LOOP
+        // ============================================================================
+        let lastTimestamp = 0;
+        let pedalClickCounter = 0;
+
+        function animate(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const dt = Math.min((timestamp - lastTimestamp) / 1000, 0.1); // Delta time in seconds
+            lastTimestamp = timestamp;
+
+            if (state.isPlaying) {
+                // Effective speed multiplier (Turbo adds 80% speed)
+                const currentMultiplier = state.speedMultiplier * (state.isTurbo ? 1.8 : 1.0);
+
+                // 1. Advance Pedal Rotation Angle (2*PI radians = 1 full pedal revolution)
+                // Base 1.0x speed = 1 revolution per second (60 RPM)
+                const angularVelocity = 2 * Math.PI * currentMultiplier;
+                state.pedalAngle = (state.pedalAngle + angularVelocity * dt) % (2 * Math.PI);
+
+                // Sound trigger twice per revolution (top & bottom of stroke)
+                pedalClickCounter += angularVelocity * dt;
+                if (pedalClickCounter >= Math.PI) {
+                    pedalClickCounter %= Math.PI;
+                    playPedalClick();
+                }
+
+                // 2. Calculate Road Speed & Update Distance Stats
+                // Wheel diameter approx 0.65m => circumference ~ 2.04m
+                const speedKmh = 18.0 * currentMultiplier;
+                const distanceDeltaMeters = (speedKmh / 3.6) * dt;
+                state.distanceTraveled += distanceDeltaMeters / 1000; // in km
+
+                // Update UI Stats Text
+                DOM.statRpm.textContent = `${Math.round(60 * currentMultiplier)} RPM`;
+                DOM.statSpeed.textContent = `${speedKmh.toFixed(1)} km/h`;
+                DOM.statDist.textContent = `${state.distanceTraveled.toFixed(2)} km`;
+
+                // 3. UPDATE IK LEGS & PEDAL CRANKS
+                const rightAngle = state.pedalAngle;
+                const leftAngle = state.pedalAngle + Math.PI; // 180 degrees out of phase
+
+                // Update Pedals & Cranks SVG
+                const rpx = RIG.crankCenter.x + RIG.crankRadius * Math.cos(rightAngle);
+                const rpy = RIG.crankCenter.y + RIG.crankRadius * Math.sin(rightAngle);
+                DOM.rightCrank.setAttribute('x2', rpx.toFixed(1));
+                DOM.rightCrank.setAttribute('y2', rpy.toFixed(1));
+                DOM.rightPedal.setAttribute('x', (rpx - 9).toFixed(1));
+                DOM.rightPedal.setAttribute('y', (rpy - 3.5).toFixed(1));
+
+                const lpx = RIG.crankCenter.x + RIG.crankRadius * Math.cos(leftAngle);
+                const lpy = RIG.crankCenter.y + RIG.crankRadius * Math.sin(leftAngle);
+                DOM.leftCrank.setAttribute('x2', lpx.toFixed(1));
+                DOM.leftCrank.setAttribute('y2', lpy.toFixed(1));
+                DOM.leftPedal.setAttribute('x', (lpx - 9).toFixed(1));
+                DOM.leftPedal.setAttribute('y', (lpy - 3.5).toFixed(1));
+
+                // Update Legs via IK
+                updateLeg(DOM.rightThigh, DOM.rightShin, DOM.rightFoot, rightAngle, true);
+                updateLeg(DOM.leftThigh, DOM.leftShin, DOM.leftFoot, leftAngle, false);
+
+                // 4. ROTATE WHEEL SPOKES
+                const wheelRotationDeg = (state.pedalAngle * (180 / Math.PI) * 2.2) % 360;
+                DOM.backWheelSpokes.setAttribute('transform', `rotate(${wheelRotationDeg.toFixed(1)})`);
+                DOM.frontWheelSpokes.setAttribute('transform', `rotate(${wheelRotationDeg.toFixed(1)})`);
+
+                // 5. SECONDARY PROCEDURAL ANIMATION (BODY, HEAD BOB & BEAK JIGGLE)
+                // Head bobs up/down in sync with pedal rhythm
+                const headBobY = Math.sin(state.pedalAngle * 2) * 4.5;
+                const headBobX = Math.cos(state.pedalAngle) * 2;
+                DOM.headNeckGroup.setAttribute('transform', `translate(${(165 + headBobX).toFixed(1)}, ${(75 + headBobY).toFixed(1)})`);
+
+                // Pelican Beak Pouch jiggles slightly due to wind & movement
+                const pouchJiggle = Math.sin(timestamp * 0.008) * 4;
+                DOM.beakPouch.setAttribute('d', `M 2,3 C 15,${25 + pouchJiggle} 45,${28 + pouchJiggle * 0.5} 54,8 Z`);
+
+                // Wing subtle micro-steering sway
+                const wingSway = Math.cos(state.pedalAngle) * 2;
+                DOM.wingPath.setAttribute('transform', `rotate(${wingSway.toFixed(1)}, 145, 85)`);
+
+                // Bike Frame / Pelican Body subtle bounce
+                const bikeBounceY = Math.abs(Math.sin(state.pedalAngle * 2)) * -3;
+                DOM.pelicanGroup.setAttribute('transform', `translate(420, ${(240 + bikeBounceY).toFixed(1)})`);
+
+                // 6. MULTI-LAYER PARALLAX SCROLLING
+                const scrollPos = (state.distanceTraveled * 1000) * 15; // Pixel scale factor
+
+                // Layer 1: Clouds (Very slow, 0.05x)
+                const cloudOffset = (scrollPos * 0.05) % 1200;
+                DOM.layerClouds.setAttribute('transform', `translate(${-cloudOffset.toFixed(1)}, 0)`);
+
+                // Layer 2: Mountains (Slow, 0.15x)
+                const mountainOffset = (scrollPos * 0.15) % 1400;
+                DOM.layerMountains.setAttribute('transform', `translate(${-mountainOffset.toFixed(1)}, 0)`);
+
+                // Layer 3: Midground Trees/Lighthouse (Medium, 0.45x)
+                const midOffset = (scrollPos * 0.45) % 2400;
+                DOM.layerMidground.setAttribute('transform', `translate(${-midOffset.toFixed(1)}, 0)`);
+
+                // Layer 4: Fence (Fast, 0.85x)
+                const fenceOffset = (scrollPos * 0.85) % 2400;
+                DOM.layerFence.setAttribute('transform', `translate(${-fenceOffset.toFixed(1)}, 0)`);
+
+                // Layer 5: Foreground Sidewalk & Road Lines (Full Speed 1.0x)
+                const sidewalkOffset = (scrollPos * 1.0) % 60;
+                DOM.sidewalkLines.setAttribute('transform', `translate(${-sidewalkOffset.toFixed(1)}, 0)`);
+                const roadOffset = (scrollPos * 1.0) % 100;
+                DOM.roadDashes.setAttribute('transform', `translate(${-roadOffset.toFixed(1)}, 0)`);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+
+        // ============================================================================
+        // 6. INTERACTIVE UI CONTROLS & EVENT LISTENERS
+        // ============================================================================
+        function setupEventListeners() {
+            // Play / Pause Toggle
+            DOM.playBtn.addEventListener('click', () => {
+                initAudio();
+                state.isPlaying = !state.isPlaying;
+                if (state.isPlaying) {
+                    DOM.lblPlay.textContent = "Pause Ride";
+                    DOM.iconPause.classList.remove('hidden');
+                    DOM.iconPlay.classList.add('hidden');
+                } else {
+                    DOM.lblPlay.textContent = "Resume Ride";
+                    DOM.iconPause.classList.add('hidden');
+                    DOM.iconPlay.classList.remove('hidden');
+                }
+            });
+
+            // Sprint Turbo Boost (Hold or Toggle)
+            const setTurbo = (active) => {
+                state.isTurbo = active;
+                if (active) {
+                    DOM.turboBtn.classList.add('bg-amber-500', 'text-slate-900', 'scale-105');
+                    DOM.turboBtn.classList.remove('bg-slate-700', 'text-amber-300');
+                    DOM.speedLines.setAttribute('opacity', '0.7');
+                    DOM.speedBadge.textContent = "⚡ Sprinting!";
+                    DOM.speedBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-amber-500 text-slate-900 shadow-lg pulse-live";
+                } else {
+                    DOM.turboBtn.classList.remove('bg-amber-500', 'text-slate-900', 'scale-105');
+                    DOM.turboBtn.classList.add('bg-slate-700', 'text-amber-300');
+                    DOM.speedLines.setAttribute('opacity', '0');
+                    DOM.speedBadge.textContent = "Cruising Pace";
+                    DOM.speedBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-slate-900/80 border border-slate-700 text-emerald-400 backdrop-blur-md shadow-lg";
+                }
+            };
+
+            DOM.turboBtn.addEventListener('mousedown', () => setTurbo(true));
+            DOM.turboBtn.addEventListener('mouseup', () => setTurbo(false));
+            DOM.turboBtn.addEventListener('mouseleave', () => setTurbo(false));
+            DOM.turboBtn.addEventListener('touchstart', (e) => { e.preventDefault(); setTurbo(true); });
+            DOM.turboBtn.addEventListener('touchend', (e) => { e.preventDefault(); setTurbo(false); });
+
+            // Speed Slider
+            DOM.speedSlider.addEventListener('input', (e) => {
+                state.speedMultiplier = parseFloat(e.target.value);
+                const rpm = Math.round(60 * state.speedMultiplier);
+                DOM.valSpeedMultiplier.textContent = `${state.speedMultiplier.toFixed(1)}x (${rpm} RPM)`;
+            });
+
+            // Ring Bicycle Bell
+            DOM.bellBtn.addEventListener('click', () => {
+                playBellSound();
+                // Visual bounce effect on bell button
+                DOM.bellBtn.classList.add('scale-125', 'rotate-12');
+                setTimeout(() => DOM.bellBtn.classList.remove('scale-125', 'rotate-12'), 200);
+            });
+
+            // Time of Day Theme Switcher
+            const setTimeOfDay = (tod) => {
+                state.timeOfDay = tod;
+                [DOM.todDay, DOM.todSunset, DOM.todNight].forEach(btn => {
+                    btn.className = "py-2 px-3 rounded-xl bg-slate-700 border border-slate-600 text-slate-300 hover:bg-slate-600 font-semibold text-xs transition-all";
+                });
+
+                if (tod === 'day') {
+                    DOM.todDay.className = "py-2 px-3 rounded-xl bg-sky-500/20 border border-sky-500/50 text-sky-300 font-semibold text-xs transition-all";
+                    DOM.skyRect.setAttribute('fill', 'url(#skyGradDay)');
+                    DOM.sunBody.setAttribute('fill', '#fde047');
+                    DOM.sunGlow.setAttribute('fill', '#fef08a');
+                    DOM.celestialGroup.setAttribute('transform', 'translate(1000, 120)');
+                    DOM.envBadge.innerHTML = `☀️ Sunny Coast`;
+                } else if (tod === 'sunset') {
+                    DOM.todSunset.className = "py-2 px-3 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 font-semibold text-xs transition-all";
+                    DOM.skyRect.setAttribute('fill', 'url(#skyGradSunset)');
+                    DOM.sunBody.setAttribute('fill', '#f97316');
+                    DOM.sunGlow.setAttribute('fill', '#fdba74');
+                    DOM.celestialGroup.setAttribute('transform', 'translate(850, 260)');
+                    DOM.envBadge.innerHTML = `🌅 Golden Sunset`;
+                } else if (tod === 'night') {
+                    DOM.todNight.className = "py-2 px-3 rounded-xl bg-indigo-500/20 border border-indigo-500/50 text-indigo-300 font-semibold text-xs transition-all";
+                    DOM.skyRect.setAttribute('fill', 'url(#skyGradNight)');
+                    DOM.sunBody.setAttribute('fill', '#f1f5f9');
+                    DOM.sunGlow.setAttribute('fill', '#e2e8f0');
+                    DOM.celestialGroup.setAttribute('transform', 'translate(950, 100)');
+                    DOM.envBadge.innerHTML = `🌙 Starlight Ride`;
+                }
+            };
+
+            DOM.todDay.addEventListener('click', () => setTimeOfDay('day'));
+            DOM.todSunset.addEventListener('click', () => setTimeOfDay('sunset'));
+            DOM.todNight.addEventListener('click', () => setTimeOfDay('night'));
+
+            // Accessory & Sound Toggles
+            DOM.chkCap.addEventListener('change', (e) => {
+                DOM.accessoryCap.style.display = e.target.checked ? 'block' : 'none';
+            });
+            DOM.chkSound.addEventListener('change', (e) => {
+                state.soundEnabled = e.target.checked;
+                if (e.target.checked) initAudio();
+            });
+
+            // Unlock Web Audio on first click anywhere
+            document.body.addEventListener('click', () => initAudio(), { once: true });
+        }
+
+
+        // ============================================================================
+        // 7. INITIALIZATION ON WINDOW LOAD
+        // ============================================================================
+        window.addEventListener('load', () => {
+            initSpokes();
+            initClouds();
+            initMountains();
+            initMidground();
+            initFence();
+            initRoadMarkings();
+            setupEventListeners();
+
+            // Start Animation Loop
+            requestAnimationFrame(animate);
+        });
+    </script>
+</body>
+</html>

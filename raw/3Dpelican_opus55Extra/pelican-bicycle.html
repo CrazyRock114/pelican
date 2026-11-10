@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pelican on a Bicycle</title>
+<style>
+  :root {
+    --panel-bg: rgba(16, 28, 40, 0.5);
+    --panel-border: rgba(255, 255, 255, 0.18);
+    --text: #f5f8fc;
+    --muted: rgba(245, 248, 252, 0.74);
+    --accent: #ffb547;
+    --accent-ink: #2b1a00;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #d4e9f4; color: var(--text);
+    font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  canvas { display: block; touch-action: none; outline: none; }
+  .panel {
+    position: fixed;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    -webkit-backdrop-filter: blur(10px) saturate(1.2);
+    backdrop-filter: blur(10px) saturate(1.2);
+    border-radius: 14px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+  }
+  #title { top: 16px; left: 16px; padding: 11px 16px 12px; max-width: calc(100% - 32px); }
+  #title h1 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: 0.2px; }
+  #title p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+  #controls {
+    left: 50%; bottom: 16px; transform: translateX(-50%);
+    display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;
+    padding: 8px; max-width: calc(100% - 32px);
+  }
+  button {
+    font: inherit; font-size: 13px; color: var(--text);
+    background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 9px; padding: 7px 12px; cursor: pointer; white-space: nowrap;
+  }
+  button:hover { background: rgba(255, 255, 255, 0.2); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #pauseBtn { min-width: 84px; }
+  .seg { display: flex; gap: 2px; background: rgba(0, 0, 0, 0.2); border-radius: 10px; padding: 2px; }
+  .seg button { border: 0; background: transparent; }
+  .seg button:hover { background: rgba(255, 255, 255, 0.14); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .speed { display: flex; align-items: center; gap: 8px; padding: 0 6px; font-size: 13px; color: var(--muted); }
+  .speed input { width: 110px; accent-color: var(--accent); }
+  .speed output { min-width: 34px; color: var(--text); font-variant-numeric: tabular-nums; }
+  #fallback {
+    display: none; position: fixed; inset: 0; place-items: center; text-align: center;
+    padding: 24px; color: #1d2a36; font-size: 15px;
+  }
+  @media (max-width: 560px) {
+    #title p { display: none; }
+    .speed input { width: 80px; }
+    #controls { bottom: 10px; gap: 6px; }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="title" class="panel">
+  <h1>Pelican on a Bicycle</h1>
+  <p>Drag to orbit · Scroll to zoom · Space to pause · C to change camera</p>
+</div>
+
+<div id="controls" class="panel">
+  <button id="pauseBtn" type="button" aria-pressed="false">❚❚ Pause</button>
+  <div class="seg" role="group" aria-label="Camera">
+    <button type="button" data-cam="cinematic" aria-pressed="true">Cinematic</button>
+    <button type="button" data-cam="chase" aria-pressed="false">Chase</button>
+    <button type="button" data-cam="wide" aria-pressed="false">Wide</button>
+  </div>
+  <label class="speed">Speed
+    <input id="speed" type="range" min="0.2" max="2.2" step="0.1" value="1" />
+    <output id="speedVal">1.0×</output>
+  </label>
+</div>
+
+<div id="fallback">
+  <div>
+    <strong>The 3D scene couldn't load.</strong><br />
+    It needs an internet connection to fetch Three.js from cdn.jsdelivr.net, and a browser with WebGL.
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+window.__pelicanStarted = true;
+
+/* ════════════════════════════ helpers ════════════════════════════ */
+const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+const UP = V(0, 1, 0);
+const Z_AXIS = V(0, 0, 1);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const lerp = THREE.MathUtils.lerp;
+const easeInOut = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+function mulberry32(a) {
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rand = mulberry32(20261110);
+const rr = (a, b) => a + (b - a) * rand();
+const pick = (arr) => arr[Math.floor(rand() * arr.length)];
+
+const _t1 = V(), _t2 = V(), _t3 = V();
+
+function canvasTexture(w, h, draw, rx = 1, ry = 1) {
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  draw(cv.getContext('2d'), w, h);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(rx, ry);
+  tex.anisotropy = 8;
+  return tex;
+}
+
+/** Solid cylinder from point a (radius rA) to point b (radius rB). */
+function cylinderBetween(a, b, rA, rB, mat, radial = 12) {
+  const dir = V().subVectors(b, a);
+  const len = dir.length();
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(rB, rA, len, radial), mat);
+  mesh.position.copy(a).addScaledVector(dir, 0.5);
+  mesh.quaternion.setFromUnitVectors(UP, dir.normalize());
+  return mesh;
+}
+/** Cylinder geometry already transformed into place (for merging). */
+function cylinderGeoBetween(a, b, r, radial = 5) {
+  const dir = V().subVectors(b, a);
+  const len = dir.length();
+  const geo = new THREE.CylinderGeometry(r, r, len, radial, 1, true);
+  const q = new THREE.Quaternion().setFromUnitVectors(UP, dir.clone().normalize());
+  geo.applyMatrix4(new THREE.Matrix4().compose(V().copy(a).addScaledVector(dir, 0.5), q, V(1, 1, 1)));
+  return geo;
+}
+function tubeThrough(points, r, mat, segs = 40, radial = 8) {
+  const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
+  return new THREE.Mesh(new THREE.TubeGeometry(curve, segs, r, radial, false), mat);
+}
+/** Stretch a unit-height (y) mesh so it spans a → b. */
+function placeBetween(mesh, a, b) {
+  _t1.subVectors(b, a);
+  const len = _t1.length() || 1e-4;
+  mesh.position.copy(a).addScaledVector(_t1, 0.5);
+  mesh.quaternion.setFromUnitVectors(UP, _t1.divideScalar(len));
+  mesh.scale.set(1, len, 1);
+}
+const _m4 = new THREE.Matrix4(), _bx = V(), _by = V(), _bz = V();
+/** Rotate obj so its local +x points along dir, with local +y kept as "up" as possible. */
+function orientX(obj, dir) {
+  _bx.copy(dir).normalize();
+  _by.crossVectors(Z_AXIS, _bx).normalize();
+  _bz.crossVectors(_bx, _by);
+  _m4.makeBasis(_bx, _by, _bz);
+  obj.quaternion.setFromRotationMatrix(_m4);
+}
+function sampleCurve(curve, out) {
+  const n = out.length;
+  for (let i = 0; i < n; i++) curve.getPoint(i / (n - 1), out[i]);
+}
+
+/**
+ * A tube swept along a list of points with an elliptical cross-section that can
+ * vary per point (w = half-width along `ref`, h = half-height perpendicular to it).
+ * Geometry is rebuilt in place, so it can be animated every frame (neck, wings).
+ */
+const _sT = V(), _sA1 = V(), _sA2 = V();
+class Sweep {
+  constructor(count, radial, material, colorFn) {
+    this.count = count;
+    this.radial = radial;
+    const nv = count * radial + 2;
+    this.positions = new Float32Array(nv * 3);
+    const geo = new THREE.BufferGeometry();
+    this.posAttr = new THREE.BufferAttribute(this.positions, 3);
+    this.posAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('position', this.posAttr);
+    geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nv * 3), 3));
+    const index = [];
+    for (let i = 0; i < count - 1; i++) {
+      for (let j = 0; j < radial; j++) {
+        const j2 = (j + 1) % radial;
+        const a = i * radial + j, b = (i + 1) * radial + j, c = (i + 1) * radial + j2, d = i * radial + j2;
+        index.push(a, d, b, b, d, c);
+      }
+    }
+    const s0 = count * radial, s1 = s0 + 1, last = (count - 1) * radial;
+    for (let j = 0; j < radial; j++) {
+      const j2 = (j + 1) % radial;
+      index.push(s0, j2, j);
+      index.push(s1, last + j, last + j2);
+    }
+    geo.setIndex(index);
+    const colors = new Float32Array(nv * 3);
+    const c = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      for (let j = 0; j < radial; j++) {
+        colorFn(i / (count - 1), (j / radial) * Math.PI * 2, c);
+        colors.set([c.r, c.g, c.b], (i * radial + j) * 3);
+      }
+    }
+    colorFn(0, 0, c); colors.set([c.r, c.g, c.b], s0 * 3);
+    colorFn(1, 0, c); colors.set([c.r, c.g, c.b], s1 * 3);
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    this.geometry = geo;
+    this.mesh = new THREE.Mesh(geo, material);
+    this.mesh.frustumCulled = false;
+    this.cos = new Float32Array(radial);
+    this.sin = new Float32Array(radial);
+    for (let j = 0; j < radial; j++) {
+      this.cos[j] = Math.cos((j / radial) * Math.PI * 2);
+      this.sin[j] = Math.sin((j / radial) * Math.PI * 2);
+    }
+  }
+  update(pts, w, h, ref = Z_AXIS) {
+    const P = this.positions, R = this.radial, n = this.count;
+    for (let i = 0; i < n; i++) {
+      _sT.subVectors(pts[Math.min(i + 1, n - 1)], pts[Math.max(i - 1, 0)]).normalize();
+      _sA1.copy(ref).addScaledVector(_sT, -_sT.dot(ref)).normalize();
+      _sA2.crossVectors(_sT, _sA1);
+      const p = pts[i], wi = w[i], hi = h[i];
+      for (let j = 0; j < R; j++) {
+        const cw = this.cos[j] * wi, sh = this.sin[j] * hi, k = (i * R + j) * 3;
+        P[k] = p.x + _sA1.x * cw + _sA2.x * sh;
+        P[k + 1] = p.y + _sA1.y * cw + _sA2.y * sh;
+        P[k + 2] = p.z + _sA1.z * cw + _sA2.z * sh;
+      }
+    }
+    const k = n * R * 3;
+    P[k] = pts[0].x; P[k + 1] = pts[0].y; P[k + 2] = pts[0].z;
+    P[k + 3] = pts[n - 1].x; P[k + 4] = pts[n - 1].y; P[k + 5] = pts[n - 1].z;
+    this.posAttr.needsUpdate = true;
+    this.geometry.computeVertexNormals();
+  }
+}
+
+/** Arc-length parameterised closed polyline (used for the chain). */
+class LoopCurve extends THREE.Curve {
+  constructor(pts) {
+    super();
+    this.pts = pts;
+    this.cum = [0];
+    let L = 0;
+    for (let i = 0; i < pts.length; i++) {
+      L += pts[i].distanceTo(pts[(i + 1) % pts.length]);
+      this.cum.push(L);
+    }
+    this.total = L;
+  }
+  getPoint(t, target = new THREE.Vector3()) {
+    const d = (((t % 1) + 1) % 1) * this.total;
+    let i = 0;
+    while (i < this.pts.length - 1 && this.cum[i + 1] < d) i++;
+    const a = this.pts[i], b = this.pts[(i + 1) % this.pts.length];
+    const f = (d - this.cum[i]) / ((this.cum[i + 1] - this.cum[i]) || 1);
+    return target.copy(a).lerp(b, f);
+  }
+}
+
+/* ════════════════════════════ renderer / scene ════════════════════════════ */
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const HORIZON = new THREE.Color(0xd4e9f4);
+scene.fog = new THREE.Fog(HORIZON, 45, 260);
+
+const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 1600);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 1.3;
+controls.maxDistance = 48;
+controls.maxPolarAngle = Math.PI * 0.49;
+controls.enablePan = false;
+controls.autoRotateSpeed = -0.55;
+
+const SUN_DIR = V(0.55, 0.8, 0.18).normalize();
+
+function makeSkyMaterial(sunAmount) {
+  return new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    toneMapped: false,
+    uniforms: {
+      top: { value: new THREE.Color(0x3d8ce0) },
+      horizon: { value: HORIZON.clone() },
+      ground: { value: new THREE.Color(0x8fb873) },
+      sunDir: { value: SUN_DIR },
+      sunAmt: { value: sunAmount },
+    },
+    vertexShader: /* glsl */`
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: /* glsl */`
+      uniform vec3 top; uniform vec3 horizon; uniform vec3 ground; uniform vec3 sunDir; uniform float sunAmt;
+      varying vec3 vDir;
+      void main() {
+        vec3 d = normalize(vDir);
+        float h = d.y;
+        vec3 col = mix(horizon, top, pow(clamp(h, 0.0, 1.0), 0.5));
+        col = mix(col, ground, 1.0 - smoothstep(-0.12, 0.0, h));
+        float s = max(dot(d, sunDir), 0.0);
+        col += vec3(1.0, 0.93, 0.78) * (pow(s, 1200.0) * 4.0 + pow(s, 60.0) * 0.35 + pow(s, 6.0) * 0.1) * sunAmt;
+        gl_FragColor = vec4(col, 1.0);
+        #include <colorspace_fragment>
+      }`,
+  });
+}
+
+// Image-based lighting from a tiny sky + ground scene, so chrome and water reflect the world.
+{
+  const envScene = new THREE.Scene();
+  envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), makeSkyMaterial(0.6)));
+  const g = new THREE.Mesh(new THREE.CircleGeometry(48, 32), new THREE.MeshBasicMaterial({ color: 0x5f8f48 }));
+  g.rotation.x = -Math.PI / 2; g.position.y = -1.5;
+  envScene.add(g);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(envScene, 0.02).texture;
+  pmrem.dispose();
+}
+
+const hemi = new THREE.HemisphereLight(0xd6ecff, 0x56783f, 0.45);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -3.2, right: 3.2, top: 3.2, bottom: -3.2, near: 1, far: 40 });
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+const timeU = { value: 0 };
+const unitSphere = new THREE.SphereGeometry(1, 20, 14);
+
+/* ════════════════════════════ world ════════════════════════════ */
+const R_PATH = 8.4;                     // the bike's riding radius
+const ROAD_IN = 7.2, ROAD_OUT = 8.8;
+const POND_R = 4.8;
+
+function noise2(x, z) {
+  return Math.sin(x * 0.21 + Math.sin(z * 0.13) * 1.7) * Math.cos(z * 0.17 + Math.sin(x * 0.11) * 1.3);
+}
+function groundHeight(x, z) {
+  const r = Math.hypot(x, z);
+  const k = smoothstep(16, 48, r);
+  return k * (1.7 * Math.sin(x * 0.045 + 0.5) * Math.cos(z * 0.05) + 0.9 * Math.sin(x * 0.11 + z * 0.07) + 0.014 * r);
+}
+
+const world = { ripples: [], clouds: null, birds: [] };
+
+function buildWorld() {
+  // sky dome (follows the camera)
+  world.sky = new THREE.Mesh(new THREE.SphereGeometry(700, 40, 20), makeSkyMaterial(1));
+  world.sky.renderOrder = -1;
+  scene.add(world.sky);
+
+  // ground with gentle hills and colour variation
+  const gGeo = new THREE.PlaneGeometry(800, 800, 200, 200);
+  gGeo.rotateX(-Math.PI / 2);
+  const gp = gGeo.attributes.position;
+  const gc = new Float32Array(gp.count * 3);
+  const cA = new THREE.Color(0x5b9a3e), cB = new THREE.Color(0x8cbd57), cC = new THREE.Color(0x467f35), tc = new THREE.Color();
+  for (let i = 0; i < gp.count; i++) {
+    const x = gp.getX(i), z = gp.getZ(i);
+    gp.setY(i, groundHeight(x, z) - 0.02);
+    tc.copy(cA).lerp(cB, 0.5 + 0.5 * noise2(x, z));
+    tc.lerp(cC, (0.5 + 0.5 * noise2(x * 2.7 + 7, z * 3.1 - 3)) * 0.35);
+    gc.set([tc.r, tc.g, tc.b], i * 3);
+  }
+  gGeo.setAttribute('color', new THREE.BufferAttribute(gc, 3));
+  gGeo.computeVertexNormals();
+  const ground = new THREE.Mesh(gGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // the circular bike path
+  const asphalt = canvasTexture(256, 256, (g, w, h) => {
+    const img = g.createImageData(w, h);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = 82 + Math.random() * 34;
+      img.data[i] = v; img.data[i + 1] = v + 2; img.data[i + 2] = v + 6; img.data[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+  }, 34, 34);
+  const road = new THREE.Mesh(
+    new THREE.RingGeometry(ROAD_IN, ROAD_OUT, 180, 1).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ map: asphalt, color: 0x9aa0a6, roughness: 0.92 })
+  );
+  road.receiveShadow = true;
+  scene.add(road);
+
+  const lineMat = new THREE.MeshStandardMaterial({ color: 0xf4f1e8, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  for (const r of [ROAD_IN + 0.08, ROAD_OUT - 0.08]) {
+    const m = new THREE.Mesh(new THREE.RingGeometry(r - 0.035, r + 0.035, 180, 1).rotateX(-Math.PI / 2), lineMat);
+    m.position.y = 0.002; m.receiveShadow = true; scene.add(m);
+  }
+  const dashGeos = [];
+  const DASHES = 64;
+  for (let i = 0; i < DASHES; i++) {
+    const a0 = (i / DASHES) * Math.PI * 2;
+    dashGeos.push(new THREE.RingGeometry(7.96, 8.04, 4, 1, a0, (Math.PI * 2 / DASHES) * 0.5).rotateX(-Math.PI / 2));
+  }
+  const dashes = new THREE.Mesh(mergeGeometries(dashGeos), new THREE.MeshStandardMaterial({ color: 0xf2c230, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  dashes.position.y = 0.002; dashes.receiveShadow = true;
+  scene.add(dashes);
+
+  // pond
+  const shore = new THREE.Mesh(new THREE.RingGeometry(POND_R - 0.2, POND_R + 0.55, 72, 1).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0xd8c38e, roughness: 1 }));
+  shore.position.y = -0.012; shore.receiveShadow = true; scene.add(shore);
+  const water = new THREE.Mesh(new THREE.CircleGeometry(POND_R, 72).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x2c7fb8, roughness: 0.06, metalness: 0.1, envMapIntensity: 1.3 }));
+  water.position.y = -0.005; water.receiveShadow = true; scene.add(water);
+
+  const padMat = new THREE.MeshStandardMaterial({ color: 0x4f8f3a, roughness: 0.6, side: THREE.DoubleSide });
+  const lotusMat = new THREE.MeshStandardMaterial({ color: 0xffb3cf, roughness: 0.5 });
+  for (let i = 0; i < 11; i++) {
+    const a = rr(0, Math.PI * 2), d = rr(1.2, POND_R - 0.6), s = rr(0.22, 0.4);
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(s, 22, 0.3, Math.PI * 2 - 0.6).rotateX(-Math.PI / 2), padMat);
+    pad.position.set(Math.cos(a) * d, 0.0, Math.sin(a) * d);
+    pad.rotation.y = rr(0, Math.PI * 2);
+    scene.add(pad);
+    if (i % 3 === 0) {
+      const fl = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.1, 7, 1, true), lotusMat);
+      fl.position.set(pad.position.x + 0.05, 0.05, pad.position.z);
+      fl.rotation.x = Math.PI;
+      scene.add(fl);
+    }
+  }
+  const rippleGeo = new THREE.RingGeometry(0.92, 1, 48).rotateX(-Math.PI / 2);
+  for (let i = 0; i < 5; i++) {
+    const m = new THREE.Mesh(rippleGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+    m.position.y = -0.003;
+    scene.add(m);
+    world.ripples.push({ mesh: m, t0: -i * 0.9, dur: rr(2.8, 4.2) });
+  }
+
+  // reeds and cattails around the pond
+  const reedMat = new THREE.MeshStandardMaterial({ color: 0x5f8c3a, roughness: 0.8 });
+  const cattailMat = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.85 });
+  for (let c = 0; c < 8; c++) {
+    const a = rr(0, Math.PI * 2);
+    const cx = Math.cos(a) * (POND_R + 0.05), cz = Math.sin(a) * (POND_R + 0.05);
+    for (let k = 0; k < 7; k++) {
+      const h = rr(0.55, 1.25);
+      const reed = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.014, h, 5), reedMat);
+      reed.position.set(cx + rr(-0.3, 0.3), h / 2, cz + rr(-0.3, 0.3));
+      reed.rotation.set(rr(-0.12, 0.12), 0, rr(-0.12, 0.12));
+      scene.add(reed);
+      if (k % 2 === 0) {
+        const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.022, 0.11, 4, 8), cattailMat);
+        tail.position.set(0, h / 2 - 0.02, 0);
+        reed.add(tail);
+      }
+    }
+  }
+
+  // blob-shadow texture for scenery (keeps the real shadow map crisp around the rider)
+  const blobTex = canvasTexture(128, 128, (g, w, h) => {
+    const grd = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    grd.addColorStop(0, 'rgba(20,40,10,0.55)');
+    grd.addColorStop(0.6, 'rgba(20,40,10,0.28)');
+    grd.addColorStop(1, 'rgba(20,40,10,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, w, h);
+  });
+  const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  const addBlob = (x, z, size) => {
+    const b = new THREE.Mesh(blobGeo, blobMat);
+    const ox = -SUN_DIR.x * size * 0.25, oz = -SUN_DIR.z * size * 0.25;
+    b.position.set(x + ox, groundHeight(x + ox, z + oz) + 0.04, z + oz);
+    b.scale.set(size, 1, size);
+    scene.add(b);
+  };
+
+  // trees
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x7a5434, roughness: 0.9 });
+  const leafMats = [0x4e8d3a, 0x5d9c45, 0x3f7c35, 0x6ea94f, 0x7cae46].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, flatShading: true }));
+  const pineMats = [0x2f6b3a, 0x3a7a43, 0x2c5f36].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, flatShading: true }));
+  const ico = new THREE.IcosahedronGeometry(1, 1);
+  const cone = new THREE.ConeGeometry(1, 1, 8);
+  const trunkGeo = new THREE.CylinderGeometry(0.11, 0.17, 1, 7).translate(0, 0.5, 0);
+  function makeTree(kind) {
+    const g = new THREE.Group();
+    if (kind === 0) {
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat); trunk.scale.y = 1.6; g.add(trunk);
+      const mat = pick(leafMats);
+      for (let k = 0; k < 4; k++) {
+        const b = new THREE.Mesh(ico, mat);
+        b.scale.setScalar(rr(0.62, 0.98));
+        b.position.set(rr(-0.45, 0.45), 1.75 + rr(0, 0.75), rr(-0.45, 0.45));
+        g.add(b);
+      }
+    } else {
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat); trunk.scale.y = 0.9; g.add(trunk);
+      const mat = pick(pineMats);
+      for (let k = 0; k < 3; k++) {
+        const c = new THREE.Mesh(cone, mat);
+        const s = 1.15 - k * 0.3;
+        c.scale.set(s, 1.35, s);
+        c.position.y = 1.15 + k * 0.66;
+        g.add(c);
+      }
+    }
+    return g;
+  }
+  for (let i = 0; i < 70; i++) {
+    const a = rr(0, Math.PI * 2), d = 16 + Math.pow(rand(), 1.4) * 52;
+    const x = Math.cos(a) * d, z = Math.sin(a) * d;
+    const t = makeTree(rand() < 0.62 ? 0 : 1);
+    const s = rr(0.85, 1.6);
+    t.scale.setScalar(s);
+    t.rotation.y = rr(0, Math.PI * 2);
+    t.position.set(x, groundHeight(x, z) - 0.05, z);
+    scene.add(t);
+    addBlob(x, z, 3.2 * s);
+  }
+
+  // bushes in the infield and just outside the path
+  const bushMats = leafMats.slice(0, 4);
+  const addBush = (x, z, s) => {
+    const g = new THREE.Group();
+    const mat = pick(bushMats);
+    for (let k = 0; k < 3; k++) {
+      const b = new THREE.Mesh(ico, mat);
+      b.scale.set(rr(0.3, 0.45), rr(0.25, 0.38), rr(0.3, 0.45));
+      b.position.set(rr(-0.25, 0.25), 0.2, rr(-0.25, 0.25));
+      g.add(b);
+    }
+    g.scale.setScalar(s);
+    g.position.set(x, groundHeight(x, z) - 0.03, z);
+    scene.add(g);
+    addBlob(x, z, 1.5 * s);
+  };
+  for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2 + rr(-0.2, 0.2), d = rr(5.8, 6.5); addBush(Math.cos(a) * d, Math.sin(a) * d, rr(0.7, 1.1)); }
+  for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2 + rr(-0.15, 0.15), d = rr(13.5, 15.5); addBush(Math.cos(a) * d, Math.sin(a) * d, rr(0.9, 1.5)); }
+
+  // rocks
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x8e9092, roughness: 0.95, flatShading: true });
+  const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+  for (let i = 0; i < 18; i++) {
+    const a = rr(0, Math.PI * 2);
+    const d = rand() < 0.5 ? rr(POND_R + 0.3, POND_R + 0.9) : rr(9.6, 12.5);
+    const r = new THREE.Mesh(rockGeo, rockMat);
+    r.scale.set(rr(0.12, 0.32), rr(0.08, 0.22), rr(0.12, 0.3));
+    r.rotation.set(rr(0, 3), rr(0, 3), rr(0, 3));
+    r.position.set(Math.cos(a) * d, 0.02, Math.sin(a) * d);
+    r.castShadow = true; r.receiveShadow = true;
+    scene.add(r);
+  }
+
+  // instanced grass with a wind sway injected into the standard material
+  const bladeGeo = new THREE.ConeGeometry(0.028, 0.26, 3).translate(0, 0.13, 0);
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+  grassMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = timeU;
+    shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vec3 ip = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+        float sway = sin(uTime * 1.7 + ip.x * 0.35 + ip.z * 0.27) * 0.6 + sin(uTime * 2.9 + ip.x * 1.3) * 0.25;
+        transformed.x += sway * 0.07 * position.y * position.y / 0.068;
+      #endif`);
+  };
+  const GRASS = 7000;
+  const grass = new THREE.InstancedMesh(bladeGeo, grassMat, GRASS);
+  const dummy = new THREE.Object3D();
+  const grassCols = [0x5f9a3c, 0x78ad47, 0x8fc15a, 0x4f8a35, 0x9ec466].map((c) => new THREE.Color(c));
+  let n = 0;
+  while (n < GRASS) {
+    const a = rr(0, Math.PI * 2), d = POND_R + 0.6 + Math.pow(rand(), 1.6) * 48;
+    if (d > ROAD_IN - 0.25 && d < ROAD_OUT + 0.25) continue;
+    const x = Math.cos(a) * d, z = Math.sin(a) * d;
+    dummy.position.set(x, groundHeight(x, z) - 0.02, z);
+    dummy.rotation.set(rr(-0.25, 0.25), rr(0, Math.PI * 2), rr(-0.25, 0.25));
+    const s = rr(0.6, 1.5);
+    dummy.scale.set(s, s * rr(0.7, 1.3), s);
+    dummy.updateMatrix();
+    grass.setMatrixAt(n, dummy.matrix);
+    grass.setColorAt(n, pick(grassCols));
+    n++;
+  }
+  grass.receiveShadow = true;
+  scene.add(grass);
+
+  // flowers
+  const FLOWERS = 650;
+  const flowers = new THREE.InstancedMesh(new THREE.SphereGeometry(0.045, 7, 5), new THREE.MeshStandardMaterial({ roughness: 0.6 }), FLOWERS);
+  const flowerCols = [0xffffff, 0xffe066, 0xff8fb1, 0xb28dff, 0xff6b6b, 0xffffff].map((c) => new THREE.Color(c));
+  n = 0;
+  while (n < FLOWERS) {
+    const a = rr(0, Math.PI * 2), d = POND_R + 0.7 + Math.pow(rand(), 1.3) * 30;
+    if (d > ROAD_IN - 0.3 && d < ROAD_OUT + 0.3) continue;
+    const x = Math.cos(a) * d, z = Math.sin(a) * d;
+    dummy.position.set(x, groundHeight(x, z) + rr(0.08, 0.2), z);
+    dummy.rotation.set(0, 0, 0);
+    dummy.scale.set(1, 0.6, 1).multiplyScalar(rr(0.7, 1.3));
+    dummy.updateMatrix();
+    flowers.setMatrixAt(n, dummy.matrix);
+    flowers.setColorAt(n, pick(flowerCols));
+    n++;
+  }
+  scene.add(flowers);
+
+  // distant hills
+  const hillMat = new THREE.MeshStandardMaterial({ color: 0x5d8f49, roughness: 1, flatShading: true });
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2 + rr(-0.15, 0.15), d = rr(150, 210);
+    const h = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), hillMat);
+    h.scale.set(rr(30, 55), rr(10, 22), rr(30, 55));
+    h.position.set(Math.cos(a) * d, groundHeight(Math.cos(a) * d, Math.sin(a) * d) - 4, Math.sin(a) * d);
+    scene.add(h);
+  }
+
+  // clouds
+  world.clouds = new THREE.Group();
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, emissive: 0xbfd4e6, emissiveIntensity: 0.25 });
+  for (let i = 0; i < 16; i++) {
+    const c = new THREE.Group();
+    const puffs = 4 + Math.floor(rand() * 4);
+    for (let k = 0; k < puffs; k++) {
+      const p = new THREE.Mesh(unitSphere, cloudMat);
+      const s = rr(2.2, 4.2);
+      p.scale.set(s * 1.3, s * 0.8, s);
+      p.position.set((k - puffs / 2) * 2.6 + rr(-1, 1), rr(-0.5, 1.2), rr(-1.5, 1.5));
+      c.add(p);
+    }
+    const a = rr(0, Math.PI * 2), d = rr(45, 140);
+    c.position.set(Math.cos(a) * d, rr(26, 46), Math.sin(a) * d);
+    c.rotation.y = rr(0, Math.PI);
+    world.clouds.add(c);
+  }
+  scene.add(world.clouds);
+
+  // a few far-off birds circling
+  const birdMat = new THREE.MeshStandardMaterial({ color: 0xf6f6f2, roughness: 0.8, side: THREE.DoubleSide });
+  const wingGeo = new THREE.BufferGeometry();
+  wingGeo.setAttribute('position', new THREE.Float32BufferAttribute([0.14, 0, 0, -0.12, 0, 0, -0.04, 0, 0.6], 3));
+  wingGeo.computeVertexNormals();
+  for (let i = 0; i < 5; i++) {
+    const b = new THREE.Group();
+    const body = new THREE.Mesh(unitSphere, birdMat); body.scale.set(0.25, 0.07, 0.07); b.add(body);
+    const wl = new THREE.Mesh(wingGeo, birdMat), wr = new THREE.Mesh(wingGeo, birdMat);
+    wr.scale.z = -1;
+    b.add(wl, wr);
+    b.scale.setScalar(2.2);
+    scene.add(b);
+    world.birds.push({ g: b, wl, wr, r: 34 + i * 2.5, h: 19 + (i % 3) * 1.6, off: i * 0.16, ph: rr(0, 6) });
+  }
+}
+buildWorld();
+
+/* ════════════════════════════ bicycle ════════════════════════════ */
+const M = {
+  frame: new THREE.MeshStandardMaterial({ color: 0x129a9b, metalness: 0.45, roughness: 0.3 }),
+  cream: new THREE.MeshStandardMaterial({ color: 0xf1e6cb, metalness: 0.15, roughness: 0.38 }),
+  chrome: new THREE.MeshStandardMaterial({ color: 0xe8ebf0, metalness: 1, roughness: 0.16 }),
+  spoke: new THREE.MeshStandardMaterial({ color: 0xd8dce2, metalness: 1, roughness: 0.28 }),
+  tire: new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.86 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x34373c, metalness: 0.6, roughness: 0.45 }),
+  rubber: new THREE.MeshStandardMaterial({ color: 0x2b2b2e, roughness: 0.9 }),
+  leather: new THREE.MeshStandardMaterial({ color: 0x7b4a2a, roughness: 0.5 }),
+  reflector: new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0x7a2600, roughness: 0.3 }),
+};
+
+const WR = 0.343;                               // wheel radius incl. tyre
+const RA = V(-0.52, WR, 0);                     // rear axle
+const FA = V(0.55, WR, 0);                      // front axle
+const BB = V(-0.10, 0.30, 0);                   // bottom bracket
+const SC = V(-0.27, 0.73, 0);                   // seat cluster
+const HT = V(0.36, 0.84, 0), HB = V(0.41, 0.68, 0); // head tube top / bottom
+const STEER_AXIS = V().subVectors(HT, HB).normalize();
+const SEAT_DIR = V().subVectors(SC, BB).normalize();
+const SADDLE = SC.clone().addScaledVector(SEAT_DIR, 0.1);
+const CRANK = 0.155, GEAR = 1.9, CHAIN_Z = 0.072;
+const GRIP = V(0.2425, 0.9535, 0.262);
+const WHEELBASE = FA.x - RA.x;
+
+const bike = new THREE.Group();
+bike.rotation.order = 'YXZ';
+scene.add(bike);
+
+function makeWheel() {
+  const g = new THREE.Group();
+  const tireGeo = new THREE.TorusGeometry(0.312, 0.031, 24, 96);
+  const tp = tireGeo.attributes.position;
+  const tc = new Float32Array(tp.count * 3);
+  const dark = new THREE.Color(0x232427), wall = new THREE.Color(0xefe8d6), c = new THREE.Color();
+  for (let i = 0; i < tp.count; i++) {
+    const cv = (Math.hypot(tp.getX(i), tp.getY(i)) - 0.312) / 0.031;
+    const k = smoothstep(-0.8, -0.62, cv) * (1 - smoothstep(-0.2, -0.02, cv));
+    c.copy(dark).lerp(wall, k);
+    tc.set([c.r, c.g, c.b], i * 3);
+  }
+  tireGeo.setAttribute('color', new THREE.BufferAttribute(tc, 3));
+  g.add(new THREE.Mesh(tireGeo, M.tire));
+
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.284, 0.0105, 8, 96), M.chrome);
+  rim.scale.z = 1.8;
+  g.add(rim);
+
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.11, 16), M.chrome);
+  hub.rotation.x = Math.PI / 2;
+  g.add(hub);
+  for (const s of [-1, 1]) {
+    const fl = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.006, 20), M.chrome);
+    fl.rotation.x = Math.PI / 2; fl.position.z = 0.032 * s;
+    g.add(fl);
+  }
+  const spokeGeos = [];
+  const SPOKES = 28;
+  for (let k = 0; k < SPOKES; k++) {
+    const side = k % 2 ? 1 : -1;
+    const a = (k / SPOKES) * Math.PI * 2;
+    const ha = a + side * 0.55;
+    spokeGeos.push(cylinderGeoBetween(
+      V(0.031 * Math.cos(ha), 0.031 * Math.sin(ha), 0.032 * side),
+      V(0.277 * Math.cos(a), 0.277 * Math.sin(a), 0.004 * side), 0.0021, 5));
+  }
+  g.add(new THREE.Mesh(mergeGeometries(spokeGeos), M.spoke));
+
+  const valve = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.03, 6), M.dark);
+  valve.position.set(0, 0.262, 0);
+  g.add(valve);
+  const refl = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.055, 0.008), M.reflector);
+  refl.position.set(0.17 * Math.cos(0.9), 0.17 * Math.sin(0.9), 0.02);
+  refl.rotation.z = 0.9 - Math.PI / 2;
+  g.add(refl);
+  return g;
+}
+
+function gearGeo(rRoot, rTip, teeth, depth, holes = []) {
+  const s = new THREE.Shape();
+  const da = (Math.PI * 2) / teeth;
+  for (let i = 0; i < teeth; i++) {
+    const a = i * da;
+    const pts = [[rRoot, a], [rTip, a + da * 0.3], [rTip, a + da * 0.5], [rRoot, a + da * 0.8]];
+    pts.forEach(([r, ang], k) => {
+      const x = r * Math.cos(ang), y = r * Math.sin(ang);
+      if (i === 0 && k === 0) s.moveTo(x, y); else s.lineTo(x, y);
+    });
+  }
+  s.closePath();
+  for (const [hx, hy, hr] of holes) {
+    const p = new THREE.Path();
+    p.absarc(hx, hy, hr, 0, Math.PI * 2, true);
+    s.holes.push(p);
+  }
+  const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 10 });
+  g.translate(0, 0, -depth / 2);
+  return g;
+}
+
+// ── frame
+const frame = new THREE.Group();
+bike.add(frame);
+frame.add(cylinderBetween(SC, HT, 0.021, 0.021, M.frame));
+frame.add(cylinderBetween(BB, HB, 0.025, 0.025, M.frame));
+frame.add(cylinderBetween(BB, SC.clone().addScaledVector(SEAT_DIR, 0.03), 0.022, 0.022, M.frame));
+frame.add(cylinderBetween(HB.clone().addScaledVector(STEER_AXIS, -0.03), HT.clone().addScaledVector(STEER_AXIS, 0.03), 0.03, 0.03, M.frame));
+for (const s of [-1, 1]) {
+  frame.add(cylinderBetween(V(BB.x - 0.03, BB.y, 0.03 * s), V(RA.x, RA.y, 0.056 * s), 0.012, 0.011, M.frame));
+  frame.add(cylinderBetween(V(SC.x + 0.008, SC.y - 0.03, 0.022 * s), V(RA.x, RA.y, 0.056 * s), 0.011, 0.01, M.frame));
+  const drop = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.032, 0.008), M.frame);
+  drop.position.set(RA.x, RA.y, 0.058 * s);
+  frame.add(drop);
+}
+{
+  const shell = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.085, 18), M.frame);
+  shell.rotation.x = Math.PI / 2; shell.position.copy(BB);
+  frame.add(shell);
+  // cream head-tube band & seat-tube band for a little two-tone flair
+  const band = cylinderBetween(HB.clone().addScaledVector(STEER_AXIS, 0.05), HB.clone().addScaledVector(STEER_AXIS, 0.11), 0.032, 0.032, M.cream);
+  frame.add(band);
+  frame.add(cylinderBetween(BB.clone().addScaledVector(SEAT_DIR, 0.22), BB.clone().addScaledVector(SEAT_DIR, 0.3), 0.024, 0.024, M.cream));
+  // seat post
+  frame.add(cylinderBetween(SC, SADDLE, 0.014, 0.014, M.chrome));
+  // saddle
+  const sh = new THREE.Shape();
+  sh.moveTo(-0.125, 0);
+  sh.bezierCurveTo(-0.13, 0.07, -0.08, 0.092, -0.03, 0.076);
+  sh.bezierCurveTo(0.03, 0.06, 0.06, 0.03, 0.125, 0.022);
+  sh.quadraticCurveTo(0.148, 0, 0.125, -0.022);
+  sh.bezierCurveTo(0.06, -0.03, 0.03, -0.06, -0.03, -0.076);
+  sh.bezierCurveTo(-0.08, -0.092, -0.13, -0.07, -0.125, 0);
+  const sg = new THREE.ExtrudeGeometry(sh, { depth: 0.026, bevelEnabled: true, bevelThickness: 0.014, bevelSize: 0.012, bevelSegments: 5, curveSegments: 18 });
+  sg.rotateX(-Math.PI / 2);
+  const saddle = new THREE.Mesh(sg, M.leather);
+  saddle.position.set(SADDLE.x, SADDLE.y + 0.016, 0);
+  saddle.rotation.z = 0.04;
+  frame.add(saddle);
+  for (const s of [-1, 1]) {
+    const spring = new THREE.Mesh(new THREE.TorusKnotGeometry(0.012, 0.0028, 40, 5, 1, 6), M.chrome);
+    spring.position.set(SADDLE.x - 0.075, SADDLE.y - 0.002, 0.045 * s);
+    spring.rotation.x = Math.PI / 2;
+    spring.scale.z = 1.6;
+    frame.add(spring);
+  }
+  // rear fender
+  const rf = new THREE.Mesh(new THREE.TorusGeometry(0.372, 0.011, 6, 48, 2.55), M.cream);
+  rf.scale.z = 3.0; rf.position.copy(RA); rf.rotation.z = 0.78;
+  frame.add(rf);
+  // rear reflector on fender tail
+  const rr2 = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.04, 0.05), M.reflector);
+  rr2.position.set(RA.x + 0.372 * Math.cos(0.78 + 2.5), RA.y + 0.372 * Math.sin(0.78 + 2.5), 0);
+  rr2.rotation.z = 0.78 + 2.5;
+  frame.add(rr2);
+}
+
+// ── rear wheel + cog
+const rearWheel = makeWheel();
+rearWheel.position.copy(RA);
+bike.add(rearWheel);
+{
+  const cog = new THREE.Mesh(gearGeo(0.043, 0.05, 16, 0.005, [[0, 0, 0.012]]), M.chrome);
+  cog.position.z = CHAIN_Z;
+  rearWheel.add(cog);
+}
+
+// ── cranks, chainring, chain
+const crankG = new THREE.Group();
+crankG.position.copy(BB);
+bike.add(crankG);
+{
+  const ringHoles = [[0, 0, 0.016]];
+  for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + 0.3; ringHoles.push([0.052 * Math.cos(a), 0.052 * Math.sin(a), 0.017]); }
+  const ring = new THREE.Mesh(gearGeo(0.086, 0.094, 38, 0.005, ringHoles), M.chrome);
+  ring.position.z = CHAIN_Z;
+  crankG.add(ring);
+  const spindle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.21, 10), M.chrome);
+  spindle.rotation.x = Math.PI / 2;
+  crankG.add(spindle);
+  for (const s of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(CRANK + 0.03, 0.024, 0.013), M.chrome);
+    arm.position.set((CRANK / 2) * s, 0, 0.099 * s);
+    crankG.add(arm);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.016, 14), M.chrome);
+    cap.rotation.x = Math.PI / 2; cap.position.set(0, 0, 0.099 * s);
+    crankG.add(cap);
+  }
+}
+const chainTex = canvasTexture(32, 8, (g) => {
+  g.fillStyle = '#25272b'; g.fillRect(0, 0, 32, 8);
+  g.fillStyle = '#a3a9b1'; g.fillRect(1, 1, 13, 6);
+  g.fillStyle = '#6c727a'; g.fillRect(17, 2, 13, 4);
+});
+let chainLen = 1;
+{
+  const r1 = 0.088, r2 = 0.046;
+  const D = Math.hypot(BB.x - RA.x, BB.y - RA.y);
+  const gam = Math.atan2(BB.y - RA.y, BB.x - RA.x);
+  const beta = Math.asin((r1 - r2) / D);
+  const aU = gam + Math.PI / 2 + beta, aL = gam - Math.PI / 2 - beta;
+  const pts = [];
+  const arc = (C, r, a0, a1, n) => {
+    for (let i = 0; i <= n; i++) {
+      const a = a0 + ((a1 - a0) * i) / n;
+      pts.push(V(C.x + r * Math.cos(a), C.y + r * Math.sin(a), CHAIN_Z));
+    }
+  };
+  arc(RA, r2, aU, aL + Math.PI * 2, 16);
+  arc(BB, r1, aL, aU, 26);
+  pts.pop();
+  const curve = new LoopCurve(pts);
+  chainLen = curve.total;
+  chainTex.repeat.set(Math.round(chainLen / 0.0127), 1);
+  const chain = new THREE.Mesh(new THREE.TubeGeometry(curve, 320, 0.0055, 6, true),
+    new THREE.MeshStandardMaterial({ map: chainTex, metalness: 0.7, roughness: 0.4 }));
+  bike.add(chain);
+}
+
+function makePedal(side) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.022, 0.075), M.rubber);
+  g.add(body);
+  for (const fx of [-1, 1]) {
+    const r = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.016, 0.05), M.reflector);
+    r.position.set(0.051 * fx, 0, 0);
+    g.add(r);
+  }
+  const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.05, 8), M.chrome);
+  sp.rotation.x = Math.PI / 2; sp.position.z = -0.035 * side;
+  g.add(sp);
+  return g;
+}
+
+// ── steering assembly (rotates about the head-tube axis)
+const steer = new THREE.Group();
+steer.matrixAutoUpdate = false;
+bike.add(steer);
+const _mA = new THREE.Matrix4(), _mB = new THREE.Matrix4();
+function setSteer(angle) {
+  steer.matrix.makeTranslation(HB.x, HB.y, HB.z)
+    .multiply(_mA.makeRotationAxis(STEER_AXIS, angle))
+    .multiply(_mB.makeTranslation(-HB.x, -HB.y, -HB.z));
+  steer.matrixWorldNeedsUpdate = true;
+}
+const frontWheel = makeWheel();
+frontWheel.position.copy(FA);
+steer.add(frontWheel);
+const BASKET_POS = V(0.62, 0.87, 0);
+{
+  const crown = HB.clone().addScaledVector(STEER_AXIS, -0.05);
+  const crownBox = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, 0.13), M.frame);
+  crownBox.position.copy(crown);
+  crownBox.quaternion.setFromUnitVectors(UP, STEER_AXIS);
+  steer.add(crownBox);
+  for (const s of [-1, 1]) {
+    steer.add(tubeThrough([V(crown.x, crown.y, 0.05 * s), V(0.474, 0.47, 0.051 * s), V(0.522, 0.38, 0.053 * s), V(FA.x, FA.y, 0.055 * s)], 0.013, M.frame, 24, 10));
+  }
+  // steerer, stem and swept-back cruiser bars
+  const stemTop = HT.clone().addScaledVector(STEER_AXIS, 0.09);
+  steer.add(cylinderBetween(HT.clone().addScaledVector(STEER_AXIS, 0.02), stemTop, 0.015, 0.015, M.chrome));
+  const barC = V(0.385, 0.935, 0);
+  steer.add(cylinderBetween(stemTop, barC, 0.014, 0.013, M.chrome));
+  const bars = [
+    V(0.19, 0.957, -0.274), V(0.30, 0.95, -0.252), V(0.37, 0.94, -0.13), V(barC.x, barC.y, 0),
+    V(0.37, 0.94, 0.13), V(0.30, 0.95, 0.252), V(0.19, 0.957, 0.274),
+  ];
+  steer.add(tubeThrough(bars, 0.011, M.chrome, 80, 10));
+  for (const s of [-1, 1]) {
+    const grip = cylinderBetween(V(0.292, 0.951, 0.252 * s), V(0.193, 0.956, 0.273 * s), 0.018, 0.019, M.leather, 14);
+    steer.add(grip);
+    const end = new THREE.Mesh(new THREE.SphereGeometry(0.019, 12, 8), M.leather);
+    end.position.set(0.19, 0.957, 0.274 * s);
+    steer.add(end);
+  }
+  // bell
+  const bell = new THREE.Mesh(new THREE.SphereGeometry(0.022, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), M.chrome);
+  bell.position.set(0.372, 0.958, -0.115);
+  steer.add(bell);
+  // front fender
+  const ff = new THREE.Mesh(new THREE.TorusGeometry(0.372, 0.011, 6, 48, 2.1), M.cream);
+  ff.scale.z = 3.0; ff.position.copy(FA); ff.rotation.z = 0.22;
+  steer.add(ff);
+  // basket + supports
+  const weave = canvasTexture(128, 128, (g, w, h) => {
+    g.fillStyle = '#5e3b1d'; g.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 16) {
+      for (let x = 0; x < w; x += 16) {
+        const odd = ((x + y) / 16) % 2;
+        const grd = odd ? g.createLinearGradient(x, y, x + 16, y) : g.createLinearGradient(x, y, x, y + 16);
+        grd.addColorStop(0, '#9c6a36'); grd.addColorStop(0.5, '#d6a465'); grd.addColorStop(1, '#9c6a36');
+        g.fillStyle = grd; g.fillRect(x + 1, y + 1, 14, 14);
+      }
+    }
+  }, 2, 1.5);
+  const wicker = new THREE.MeshStandardMaterial({ map: weave, roughness: 0.85, side: THREE.DoubleSide });
+  const hidden = new THREE.MeshBasicMaterial({ visible: false });
+  const bw = 0.26, bh = 0.2, bd = 0.32;
+  const basket = new THREE.Group();
+  basket.position.copy(BASKET_POS);
+  basket.add(new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), [wicker, wicker, hidden, wicker, wicker, wicker]));
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0x5a3818, roughness: 0.7 });
+  const corners = [V(-bw / 2, bh / 2, -bd / 2), V(bw / 2, bh / 2, -bd / 2), V(bw / 2, bh / 2, bd / 2), V(-bw / 2, bh / 2, bd / 2)];
+  for (let i = 0; i < 4; i++) basket.add(cylinderBetween(corners[i], corners[(i + 1) % 4], 0.011, 0.011, rimMat, 8));
+  steer.add(basket);
+  steer.add(cylinderBetween(V(0.425, 0.73, 0), V(BASKET_POS.x - bw / 2, BASKET_POS.y - 0.06, 0), 0.009, 0.009, M.chrome));
+  for (const s of [-1, 1]) {
+    steer.add(cylinderBetween(V(FA.x, FA.y, 0.06 * s), V(BASKET_POS.x + 0.09, BASKET_POS.y - bh / 2, 0.11 * s), 0.0065, 0.0065, M.chrome));
+  }
+  // today's catch
+  function makeFish(color) {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.28 });
+    const body = new THREE.Mesh(unitSphere, mat); body.scale.set(0.1, 0.036, 0.022); g.add(body);
+    const ts = new THREE.Shape();
+    ts.moveTo(0, 0); ts.lineTo(-0.06, 0.042); ts.quadraticCurveTo(-0.044, 0, -0.06, -0.042); ts.lineTo(0, 0);
+    const tail = new THREE.Mesh(new THREE.ExtrudeGeometry(ts, { depth: 0.005, bevelEnabled: false }), mat);
+    tail.position.set(-0.085, 0, -0.0025);
+    g.add(tail);
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 });
+    for (const s of [-1, 1]) {
+      const e = new THREE.Mesh(unitSphere, eyeMat); e.scale.setScalar(0.0065);
+      e.position.set(0.07, 0.01, 0.016 * s);
+      g.add(e);
+    }
+    return g;
+  }
+  const f1 = makeFish(0x8fb4c8); f1.position.set(0.03, 0.06, 0.07); f1.rotation.set(0.25, 0.3, -1.25);
+  const f2 = makeFish(0xa7b8a0); f2.position.set(-0.05, 0.05, -0.07); f2.rotation.set(-0.3, -0.5, -1.4);
+  basket.add(f1, f2);
+}
+
+/* ════════════════════════════ pelican ════════════════════════════ */
+const sheen = { sheen: 0.8, sheenRoughness: 0.55, sheenColor: new THREE.Color(0xfff4e0) };
+const featherVC = new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.78, ...sheen });
+const whiteFeather = new THREE.MeshPhysicalMaterial({ color: 0xf6f3ec, roughness: 0.78, ...sheen });
+const blackFeather = new THREE.MeshPhysicalMaterial({ color: 0x1f2024, roughness: 0.6, sheen: 0.6, sheenRoughness: 0.4, sheenColor: new THREE.Color(0x58607a) });
+const billMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.36, clearcoat: 0.35, clearcoatRoughness: 0.4 });
+const pouchMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.48, sheen: 0.4, sheenColor: new THREE.Color(0xffc9a0) });
+const legMat = new THREE.MeshStandardMaterial({ color: 0xf28a3a, roughness: 0.55 });
+const tmpCol = new THREE.Color();
+const FEATHER_WHITE = 0xf7f4ee;
+
+const pelican = new THREE.Group();
+bike.add(pelican);
+
+// ── body
+const BODY_POS = V(-0.28, 1.135, 0), BODY_PITCH = 0.45;
+const bodyG = new THREE.Group();
+bodyG.rotation.order = 'XYZ';
+pelican.add(bodyG);
+{
+  const N = 30, pts = [], w = [], h = [];
+  for (let i = 0; i < N; i++) {
+    const s = i / (N - 1);
+    const prof = Math.pow(Math.sin(Math.PI * Math.pow(s, 1.1)), 0.55);
+    pts.push(V(-0.42 + 0.78 * s, -0.035 * Math.sin(Math.PI * s) + 0.04 * s * s, 0));
+    w.push(0.25 * prof + 0.002);
+    h.push(0.235 * prof + 0.002);
+  }
+  const body = new Sweep(N, 28, featherVC, (s, th, c) => {
+    const top = -Math.sin(th);                      // +1 on the back, −1 on the belly
+    c.set(FEATHER_WHITE);
+    c.lerp(tmpCol.set(0xf2dfa0), smoothstep(0.6, 0.86, s) * smoothstep(0.1, 0.7, top) * 0.75); // buff breast patch
+    c.lerp(tmpCol.set(0xd9d6cf), (1 - smoothstep(0.05, 0.3, s)) * 0.5);
+  });
+  body.update(pts, w, h);
+  bodyG.add(body.mesh);
+
+  for (let k = 0; k < 5; k++) {
+    const pivot = new THREE.Group();
+    pivot.position.set(-0.37, 0.03, 0);
+    pivot.rotation.set(0, (k - 2) * 0.22, -0.3);
+    const f = new THREE.Mesh(unitSphere, whiteFeather);
+    f.scale.set(0.13, 0.014, 0.04);
+    f.position.x = -0.1;
+    pivot.add(f);
+    bodyG.add(pivot);
+  }
+}
+
+// ── head
+const HEAD_POS = V(0.10, 1.83, 0), HEAD_PITCH = -0.12;
+const headG = new THREE.Group();
+headG.rotation.order = 'YZX';
+pelican.add(headG);
+const eyes = [];
+let pouchG;
+{
+  const skull = new THREE.Mesh(unitSphere, whiteFeather);
+  skull.scale.set(0.088, 0.073, 0.067);
+  headG.add(skull);
+  // brow ridge blending into the bill
+  const brow = new THREE.Mesh(unitSphere, whiteFeather);
+  brow.scale.set(0.06, 0.04, 0.045);
+  brow.position.set(0.045, 0.0, 0);
+  brow.rotation.z = -0.25;
+  headG.add(brow);
+
+  // upper mandible with a hooked red nail
+  const billCurve = new THREE.CatmullRomCurve3([
+    V(0.03, -0.002, 0), V(0.16, -0.026, 0), V(0.32, -0.048, 0), V(0.47, -0.066, 0),
+    V(0.565, -0.078, 0), V(0.6, -0.093, 0), V(0.597, -0.113, 0),
+  ], false, 'centripetal');
+  const BN = 30, bp = [], bwid = [], bht = [];
+  for (let i = 0; i < BN; i++) {
+    const s = i / (BN - 1);
+    bp.push(billCurve.getPoint(s));
+    bwid.push((0.043 - 0.019 * s) * (1 - smoothstep(0.84, 1, s) * 0.72));
+    bht.push((0.025 - 0.011 * s) * (1 - smoothstep(0.9, 1, s) * 0.55) + 0.012 * (1 - smoothstep(0, 0.14, s)));
+  }
+  const bill = new Sweep(BN, 16, billMat, (s, th, c) => {
+    const top = -Math.sin(th);
+    c.set(0xf6b03f);
+    c.lerp(tmpCol.set(0xf09a86), 1 - smoothstep(0, 0.14, s));
+    c.lerp(tmpCol.set(0xe9763a), smoothstep(0.7, 0.95, top) * 0.55);
+    c.lerp(tmpCol.set(0xd8402a), smoothstep(0.88, 0.96, s));
+  });
+  bill.update(bp, bwid, bht);
+  headG.add(bill.mesh);
+
+  // lower mandible rami
+  const ramusMat = new THREE.MeshStandardMaterial({ color: 0xf3a344, roughness: 0.4 });
+  for (const s of [-1, 1]) {
+    headG.add(tubeThrough([V(0.04, -0.035, 0.03 * s), V(0.3, -0.07, 0.024 * s), V(0.56, -0.09, 0.008 * s)], 0.0068, ramusMat, 30, 6));
+  }
+
+  // the famous throat pouch (jiggles!)
+  pouchG = new THREE.Group();
+  const PIV = V(0.3, -0.06, 0);
+  pouchG.position.copy(PIV);
+  const pouchCurve = new THREE.CatmullRomCurve3([
+    V(0.055, -0.046, 0), V(0.15, -0.09, 0), V(0.27, -0.118, 0), V(0.39, -0.112, 0), V(0.49, -0.094, 0), V(0.555, -0.086, 0),
+  ], false, 'centripetal');
+  const PN = 26, pp = [], pw = [], ph = [];
+  for (let i = 0; i < PN; i++) {
+    const s = i / (PN - 1);
+    pp.push(pouchCurve.getPoint(s).sub(PIV));
+    pw.push(0.031 * Math.pow(Math.sin(Math.PI * clamp(s * 0.9 + 0.06, 0, 1)), 0.6));
+    ph.push(0.012 + 0.046 * Math.pow(Math.sin(Math.PI * s), 0.8));
+  }
+  const pouch = new Sweep(PN, 16, pouchMat, (s, th, c) => {
+    c.set(0xf7a65c);
+    c.lerp(tmpCol.set(0xf08566), smoothstep(-0.2, 0.9, Math.sin(th)) * 0.7);
+  });
+  pouch.update(pp, pw, ph);
+  pouchG.add(pouch.mesh);
+  headG.add(pouchG);
+
+  // eyes
+  const ringMat = new THREE.MeshStandardMaterial({ color: 0xf2a07a, roughness: 0.5 });
+  const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.15 });
+  const irisMat = new THREE.MeshStandardMaterial({ color: 0x1a1410, roughness: 0.1 });
+  const glintMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  for (const s of [-1, 1]) {
+    const eg = new THREE.Group();
+    eg.position.set(0.04, 0.022, 0.05 * s);
+    eg.rotation.y = 0.35 * s;
+    eg.scale.z = s;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.0175, 0.0048, 8, 24), ringMat);
+    ring.position.z = 0.006;
+    eg.add(ring);
+    const ball = new THREE.Group();
+    const white = new THREE.Mesh(unitSphere, eyeWhite); white.scale.setScalar(0.0155); ball.add(white);
+    const pupil = new THREE.Mesh(unitSphere, irisMat); pupil.scale.setScalar(0.0088); pupil.position.set(0.003, 0.001, 0.0105); ball.add(pupil);
+    const glint = new THREE.Mesh(unitSphere, glintMat); glint.scale.setScalar(0.0028); glint.position.set(0.006, 0.005, 0.0175); ball.add(glint);
+    ball.position.z = 0.004;
+    eg.add(ball);
+    headG.add(eg);
+    eyes.push(ball);
+  }
+  // little crest
+  const crestMat = new THREE.MeshPhysicalMaterial({ color: 0xf1e2a8, roughness: 0.8, ...sheen });
+  for (let k = 0; k < 4; k++) {
+    const c = new THREE.Mesh(new THREE.ConeGeometry(0.011, 0.075 - k * 0.008, 6), crestMat);
+    c.position.set(-0.07 + k * 0.004, 0.04 - k * 0.012, (k - 1.5) * 0.008);
+    c.rotation.z = 1.0 + k * 0.22;
+    headG.add(c);
+  }
+}
+
+// ── neck (animated sweep)
+const NECK_N = 24;
+const neck = new Sweep(NECK_N, 18, featherVC, (s, th, c) => {
+  c.set(FEATHER_WHITE);
+  c.lerp(tmpCol.set(0xf3e4b5), smoothstep(0.75, 1, s) * smoothstep(0.2, 0.9, Math.sin(th)) * 0.5);
+});
+pelican.add(neck.mesh);
+const neckCtrl = [V(), V(), V(), V(), V()];
+const neckCurve = new THREE.CatmullRomCurve3(neckCtrl, false, 'centripetal');
+const neckPts = Array.from({ length: NECK_N }, () => V());
+const neckW = [], neckH = [];
+for (let i = 0; i < NECK_N; i++) {
+  const s = i / (NECK_N - 1);
+  const r = 0.051 + 0.052 * Math.pow(1 - s, 2.2);
+  neckW.push(r * 0.95); neckH.push(r * 1.05);
+}
+
+// ── wings (animated sweeps reaching to the grips) + black primaries "hands"
+const WING_N = 22;
+const wingW = [], wingH = [];
+for (let i = 0; i < WING_N; i++) {
+  const s = i / (WING_N - 1);
+  wingW.push(0.05 - 0.022 * s);
+  wingH.push(s < 0.35 ? 0.1 - 0.02 * s : Math.max(0.036, 0.093 - 0.09 * (s - 0.35)));
+}
+function wingColor(s, th, c) {
+  const back = Math.sin(th);
+  c.set(FEATHER_WHITE);
+  const k = Math.max(smoothstep(0.3, 0.58, s) * smoothstep(0.0, 0.55, back), smoothstep(0.8, 0.93, s));
+  c.lerp(tmpCol.set(0x1f2024), k);
+}
+function makeHand(side) {
+  const g = new THREE.Group();
+  const mitt = new THREE.Mesh(unitSphere, blackFeather);
+  mitt.scale.set(0.05, 0.036, 0.034); mitt.position.set(-0.004, 0.008, 0);
+  g.add(mitt);
+  for (let k = 0; k < 4; k++) {
+    const f = new THREE.Mesh(unitSphere, blackFeather);
+    f.scale.set(0.068 - k * 0.006, 0.0085, 0.02);
+    f.position.set(0.034 + 0.005 * k, -0.006 - 0.013 * k, (k - 1.5) * 0.009 * side);
+    f.rotation.z = -0.45 - 0.22 * k;
+    g.add(f);
+  }
+  return g;
+}
+const wings = [1, -1].map((side) => {
+  const sweep = new Sweep(WING_N, 14, featherVC, wingColor);
+  pelican.add(sweep.mesh);
+  const hand = makeHand(side);
+  pelican.add(hand);
+  const ctrl = [V(), V(), V(), V(), V()];
+  return { side, sweep, hand, ctrl, curve: new THREE.CatmullRomCurve3(ctrl, false, 'centripetal'), pts: Array.from({ length: WING_N }, () => V()) };
+});
+
+// ── legs + webbed feet
+const THIGH = 0.36, SHIN = 0.47;
+const HIP_L = V(-0.02, -0.16, 0.11);
+const ANKLE_L = V(-0.075, 0.03, 0);
+function makeFoot() {
+  const g = new THREE.Group();
+  const s = new THREE.Shape();
+  const tip = (a, L) => [L * Math.cos(a), L * Math.sin(a)];
+  s.moveTo(-0.012, -0.016);
+  let [x, y] = tip(-0.42, 0.13);
+  s.lineTo(x - 0.008, y - 0.006);
+  s.quadraticCurveTo(x + 0.012, y, x - 0.004, y + 0.012);
+  [x, y] = tip(0, 0.15);
+  s.quadraticCurveTo(0.095, -0.012, x - 0.004, y - 0.008);
+  s.quadraticCurveTo(x + 0.014, y, x - 0.004, y + 0.008);
+  [x, y] = tip(0.42, 0.13);
+  s.quadraticCurveTo(0.095, 0.012, x - 0.004, y - 0.012);
+  s.quadraticCurveTo(x + 0.012, y, x - 0.008, y + 0.006);
+  s.lineTo(-0.012, 0.016);
+  s.quadraticCurveTo(-0.03, 0, -0.012, -0.016);
+  const geo = new THREE.ExtrudeGeometry(s, { depth: 0.006, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.003, bevelSegments: 2, curveSegments: 8 });
+  geo.rotateX(-Math.PI / 2);
+  const web = new THREE.Mesh(geo, legMat);
+  web.position.set(-0.075, 0.004, 0);
+  g.add(web);
+  const toeMat = new THREE.MeshStandardMaterial({ color: 0xe0782c, roughness: 0.5 });
+  const clawMat = new THREE.MeshStandardMaterial({ color: 0x3b2a20, roughness: 0.4 });
+  for (const [a, L] of [[-0.42, 0.125], [0, 0.145], [0.42, 0.125]]) {
+    const end = V(-0.075 + L * Math.cos(a), 0.013, -L * Math.sin(a));
+    g.add(cylinderBetween(V(-0.07, 0.014, 0), end, 0.0075, 0.005, toeMat, 6));
+    const claw = new THREE.Mesh(new THREE.ConeGeometry(0.005, 0.016, 6), clawMat);
+    claw.position.copy(end).add(V(0.006 * Math.cos(a), -0.002, -0.006 * Math.sin(a)));
+    claw.rotation.set(0, a, -Math.PI / 2 - 0.3);
+    g.add(claw);
+  }
+  return g;
+}
+const legs = [1, -1].map((side) => {
+  const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.068, 1, 16), whiteFeather);
+  const kneeCap = new THREE.Mesh(unitSphere, whiteFeather); kneeCap.scale.setScalar(0.043);
+  const knee = new THREE.Mesh(unitSphere, legMat); knee.scale.setScalar(0.025);
+  const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.022, 1, 12), legMat);
+  const ankle = new THREE.Mesh(unitSphere, legMat); ankle.scale.setScalar(0.021);
+  const foot = makeFoot();
+  pelican.add(thigh, kneeCap, knee, shin, ankle, foot);
+  const pedal = makePedal(side);
+  bike.add(pedal);
+  return { side, thigh, kneeCap, knee, shin, ankle, foot, pedal };
+});
+
+bike.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+
+/* ════════════════════════════ animation ════════════════════════════ */
+const _d = V(), _p = V(), _hip = V(), _knee = V(), _ankle = V(), _kneeTop = V(), _grip = V(), _off = V(), _dir = V(), _camL = V();
+
+function solveIK(hip, target, a, b, pole, outKnee) {
+  _d.subVectors(target, hip);
+  let dist = _d.length();
+  _d.divideScalar(dist || 1);
+  dist = clamp(dist, Math.abs(a - b) + 1e-3, (a + b) * 0.999);
+  const cosA = clamp((a * a + dist * dist - b * b) / (2 * a * dist), -1, 1);
+  const sinA = Math.sqrt(1 - cosA * cosA);
+  _p.copy(pole).addScaledVector(_d, -pole.dot(_d)).normalize();
+  outKnee.copy(hip).addScaledVector(_d, a * cosA).addScaledVector(_p, a * sinA);
+}
+
+let nextBlink = 2.2;
+function updatePelican(crank, now) {
+  // body: bob twice per pedal revolution, rock side to side once
+  bodyG.position.set(BODY_POS.x, BODY_POS.y + 0.011 * Math.sin(2 * crank + 0.6), 0);
+  bodyG.rotation.set(0.05 * Math.sin(crank), 0.03 * Math.sin(crank), BODY_PITCH + 0.014 * Math.sin(2 * crank));
+  bodyG.updateMatrix();
+
+  // head: stabilised like a real bird's, with an occasional curious look at the camera
+  const m = now % 13;
+  const look = smoothstep(7, 7.9, m) * (1 - smoothstep(10.2, 11.1, m));
+  let yawC = 0, pitchC = 0;
+  if (look > 0) {
+    _camL.copy(camera.position);
+    bike.worldToLocal(_camL);
+    _camL.sub(HEAD_POS);
+    yawC = clamp(Math.atan2(-_camL.z, _camL.x), -1.15, 1.15);
+    pitchC = clamp(Math.atan2(_camL.y, Math.hypot(_camL.x, _camL.z)), -0.45, 0.35);
+  }
+  headG.position.set(HEAD_POS.x + 0.005 * Math.sin(2 * crank), HEAD_POS.y + 0.007 * Math.sin(2 * crank + 1.2), 0);
+  headG.rotation.set(0, lerp(0.08, yawC, look), HEAD_PITCH + 0.02 * Math.sin(2 * crank) + pitchC * look);
+  headG.updateMatrix();
+
+  // blink
+  let eyeS = 1;
+  const bt = now - nextBlink;
+  if (bt > 0) {
+    if (bt < 0.16) eyeS = Math.max(0.08, Math.abs(1 - bt / 0.08));
+    else nextBlink = now + 2 + Math.random() * 3.5;
+  }
+  for (const e of eyes) e.scale.y = eyeS;
+
+  // pouch wobble
+  pouchG.scale.y = 1 + 0.06 * Math.sin(now * 8.5) * (0.6 + 0.4 * Math.sin(now * 0.7)) + 0.05 * Math.sin(2 * crank + 0.8);
+
+  // neck
+  neckCtrl[0].set(0.18, 0.05, 0).applyMatrix4(bodyG.matrix);
+  neckCtrl[1].set(0.31, 0.15, 0).applyMatrix4(bodyG.matrix);
+  neckCtrl[3].set(-0.065, -0.055, 0).applyMatrix4(headG.matrix);
+  neckCtrl[4].set(-0.02, -0.01, 0).applyMatrix4(headG.matrix);
+  neckCtrl[2].lerpVectors(neckCtrl[1], neckCtrl[3], 0.5).add(_off.set(-0.065, 0, 0));
+  sampleCurve(neckCurve, neckPts);
+  neck.update(neckPts, neckW, neckH);
+
+  // wings: shoulder (on the body) → elbow → wrist on the grip (on the steering)
+  for (const W of wings) {
+    const s = W.side, c = W.ctrl;
+    c[0].set(-0.03, 0.07, 0.13 * s).applyMatrix4(bodyG.matrix);
+    c[1].set(0.15, 0.07, 0.2 * s).applyMatrix4(bodyG.matrix);
+    _grip.set(GRIP.x, GRIP.y, GRIP.z * s).applyMatrix4(steer.matrix);
+    c[3].copy(_grip).add(_off.set(-0.075, 0.03, 0));
+    c[4].copy(_grip).add(_off.set(0.012, 0.004, 0));
+    c[2].lerpVectors(c[1], c[3], 0.5).add(_off.set(-0.03, -0.025 + 0.012 * Math.sin(crank + (s > 0 ? 0 : Math.PI)), 0.085 * s));
+    sampleCurve(W.curve, W.pts);
+    W.sweep.update(W.pts, wingW, wingH);
+    W.hand.position.copy(_grip);
+    orientX(W.hand, _dir.subVectors(c[4], c[3]));
+  }
+
+  // legs: feet ride the pedals, two-bone IK up to the hips
+  for (const L of legs) {
+    const a = crank + (L.side > 0 ? 0 : Math.PI);
+    const px = BB.x + CRANK * Math.cos(a), py = BB.y + CRANK * Math.sin(a), pz = 0.15 * L.side;
+    L.pedal.position.set(px, py, pz);
+    L.foot.position.set(px, py + 0.013, pz);
+    L.foot.rotation.z = 0.15 * Math.cos(a) - 0.06;
+    L.foot.updateMatrix();
+    _ankle.copy(ANKLE_L).applyMatrix4(L.foot.matrix);
+    _hip.set(HIP_L.x, HIP_L.y, HIP_L.z * L.side).applyMatrix4(bodyG.matrix);
+    _p.set(1, 0.1, 0.3 * L.side);
+    solveIK(_hip, _ankle, THIGH, SHIN, _p.clone(), _knee);
+    _kneeTop.lerpVectors(_hip, _knee, 0.9);
+    placeBetween(L.thigh, _hip, _kneeTop);
+    L.kneeCap.position.copy(_kneeTop);
+    L.knee.position.copy(_knee);
+    placeBetween(L.shin, _knee, _ankle);
+    L.ankle.position.copy(_ankle);
+  }
+}
+
+/* ════════════════════════════ camera modes & UI ════════════════════════════ */
+const CAM_OFFSET = V(2.1, 0.62, 3.5);     // in the bike's yaw frame: ahead, up, outside
+const WIDE_POS = V(17, 11.5, 19), WIDE_TARGET = V(0, 0.4, 0);
+let camMode = 'cinematic';
+let tween = null;
+let prevYaw = null;
+let lastInteract = -10;
+let interacting = false;
+controls.addEventListener('start', () => { interacting = true; });
+controls.addEventListener('end', () => { interacting = false; lastInteract = clock.elapsedTime; });
+
+const camButtons = [...document.querySelectorAll('[data-cam]')];
+function setCamMode(mode, dur = 1.3) {
+  camMode = mode;
+  camButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.cam === mode)));
+  tween = { t: 0, dur, fromPos: camera.position.clone(), fromTarget: controls.target.clone() };
+}
+camButtons.forEach((b) => b.addEventListener('click', () => setCamMode(b.dataset.cam)));
+
+let paused = false;
+const pauseBtn = document.getElementById('pauseBtn');
+function setPaused(p) {
+  paused = p;
+  pauseBtn.textContent = p ? '▶ Play' : '❚❚ Pause';
+  pauseBtn.setAttribute('aria-pressed', String(p));
+}
+pauseBtn.addEventListener('click', () => setPaused(!paused));
+
+let speedMul = 1;
+const speedIn = document.getElementById('speed'), speedOut = document.getElementById('speedVal');
+speedIn.addEventListener('input', () => {
+  speedMul = parseFloat(speedIn.value);
+  speedOut.textContent = speedMul.toFixed(1) + '×';
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.target.closest && e.target.closest('button, input')) return;
+  if (e.code === 'Space') { e.preventDefault(); setPaused(!paused); }
+  else if (e.key === 'c' || e.key === 'C') {
+    const order = ['cinematic', 'chase', 'wide'];
+    setCamMode(order[(order.indexOf(camMode) + 1) % order.length]);
+  }
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* ════════════════════════════ main loop ════════════════════════════ */
+const BASE_SPEED = 3.0;   // m/s
+const clock = new THREE.Clock();
+let rideDist = 0, lean = 0;
+const bikeTarget = V();
+
+camera.position.copy(WIDE_POS);
+controls.target.copy(WIDE_TARGET);
+setCamMode('cinematic', 2.6);
+
+function tick() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const now = clock.elapsedTime;
+  timeU.value = now;
+
+  if (!paused) rideDist += BASE_SPEED * speedMul * dt;
+  const phi = rideDist / R_PATH;
+  const yaw = phi + Math.PI / 2;
+  const v = BASE_SPEED * speedMul;
+  if (!paused) lean += (Math.atan((v * v) / (9.81 * R_PATH)) - lean) * Math.min(1, dt * 2.5);
+
+  const wheelAng = -rideDist / WR;
+  const crank = wheelAng / GEAR + 0.6;
+
+  bike.position.set(R_PATH * Math.cos(phi), 0, -R_PATH * Math.sin(phi));
+  bike.rotation.set(-lean + 0.012 * Math.sin(crank), yaw, 0);
+  rearWheel.rotation.z = wheelAng;
+  frontWheel.rotation.z = wheelAng;
+  crankG.rotation.z = crank;
+  setSteer(Math.atan(WHEELBASE / R_PATH) + 0.022 * Math.sin(crank + 0.5));
+  chainTex.offset.x = ((-crank * 0.088) / chainLen) * chainTex.repeat.x;
+  bike.updateMatrixWorld(true);
+
+  updatePelican(crank, now);
+
+  // world life
+  for (const r of world.ripples) {
+    let age = (now - r.t0) / r.dur;
+    if (age >= 1) {
+      r.t0 = now; age = 0; r.dur = rr(2.8, 4.2);
+      const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * (POND_R - 1.2);
+      r.mesh.position.set(Math.cos(a) * d, -0.003, Math.sin(a) * d);
+    }
+    if (age < 0) { r.mesh.material.opacity = 0; continue; }
+    const s = 0.12 + age * 1.1;
+    r.mesh.scale.set(s, 1, s);
+    r.mesh.material.opacity = 0.45 * (1 - age) * smoothstep(0, 0.08, age);
+  }
+  world.clouds.rotation.y = now * 0.004;
+  for (const b of world.birds) {
+    const ang = now * 0.05 + b.off;
+    b.g.position.set(Math.cos(ang) * b.r - 8, b.h + Math.sin(now * 0.4 + b.ph) * 0.6, -Math.sin(ang) * b.r + 6);
+    b.g.rotation.y = ang + Math.PI / 2 + Math.PI;
+    const flap = Math.sin(now * 3.2 + b.ph) * 0.55;
+    b.wl.rotation.x = -flap; b.wr.rotation.x = flap;
+  }
+
+  // camera
+  bikeTarget.set(bike.position.x, 0.95, bike.position.z);
+  if (tween) {
+    tween.t = Math.min(1, tween.t + dt / tween.dur);
+    const e = easeInOut(tween.t);
+    const toT = camMode === 'wide' ? WIDE_TARGET : bikeTarget;
+    const toP = camMode === 'wide' ? WIDE_POS : _t2.copy(CAM_OFFSET).applyAxisAngle(UP, yaw).add(bikeTarget);
+    controls.target.lerpVectors(tween.fromTarget, toT, e);
+    camera.position.lerpVectors(tween.fromPos, toP, e);
+    if (tween.t >= 1) tween = null;
+  } else if (camMode !== 'wide') {
+    // follow the rider; rotate with it so the framing holds while it circles the pond
+    _t3.subVectors(bikeTarget, controls.target);
+    camera.position.add(_t3);
+    controls.target.copy(bikeTarget);
+    if (prevYaw !== null) {
+      _t2.subVectors(camera.position, bikeTarget).applyAxisAngle(UP, yaw - prevYaw);
+      camera.position.copy(bikeTarget).add(_t2);
+    }
+  }
+  prevYaw = yaw;
+  controls.autoRotate = camMode === 'cinematic' && !tween && !interacting && now - lastInteract > 3;
+  controls.update();
+
+  world.sky.position.copy(camera.position);
+  sun.target.position.copy(bike.position);
+  sun.position.copy(bike.position).addScaledVector(SUN_DIR, 15);
+
+  renderer.render(scene, camera);
+}
+renderer.setAnimationLoop(tick);
+</script>
+<script>
+  setTimeout(function () {
+    if (!window.__pelicanStarted) document.getElementById('fallback').style.display = 'grid';
+  }, 8000);
+</script>
+</body>
+</html>

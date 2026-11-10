@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pelican 行车测试 · 对比导航站</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚲</text></svg>">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="logo">🚲</div>
+    <h1>Pelican 行车测试<span class="grad">对比导航站</span></h1>
+    <p class="sub">
+      <em>Gemini 4 Carbon · 4 Argon · Flash Lite</em><span class="vs">×</span><em>Fable 5.2 · Opus 5.5</em>
+      &nbsp;—&nbsp;2026-11-09 ~ 11-10 · 2D / 3D 双赛道 · 4 种 Harness
+    </p>
+    <div class="stat-chips" id="statChips"></div>
+  </div>
+</header>
+
+<section class="toolbar" id="toolbar">
+  <div class="toolbar-row">
+    <div class="seg" id="segDim">
+      <button data-v="all" class="on">全部</button>
+      <button data-v="2D">2D</button>
+      <button data-v="3D">3D</button>
+    </div>
+    <div class="seg" id="segVendor">
+      <button data-v="all" class="on">厂商</button>
+      <button data-v="google">Google</button>
+      <button data-v="anthropic">Anthropic</button>
+    </div>
+    <input type="search" id="q" placeholder="搜索文件夹 / 作品名…">
+    <select id="sort">
+      <option value="default">默认排序</option>
+      <option value="mtime">最新优先</option>
+      <option value="size">大文件优先</option>
+    </select>
+    <button class="ghost" id="previewAll" title="为当前筛选结果逐个加载实时预览(作品较多时较吃性能)">⚡ 全部加载预览</button>
+    <button class="ghost" id="reset">重置</button>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="toolbar-row chiprows">
+    <div class="chiprow" id="modelChips"></div>
+    <div class="chiprow" id="harnessChips"></div>
+  </div>
+</section>
+
+<main>
+  <div id="grid"></div>
+  <div id="empty" hidden>
+    <p>🪶 没有符合条件的作品</p>
+    <button class="ghost" onclick="resetFilters()">重置筛选</button>
+  </div>
+</main>
+
+<footer>
+  <p>
+    📁 原始素材位于 <code>raw/</code>,本站<strong>零改动引用</strong>(页面均通过相对路径直接加载,未复制、未修改任何原始文件)。
+    文件夹 <code>3Dpenlican_Anti_4CarbonHigh</code> 的拼写原始素材即如此,保留未动。
+  </p>
+  <p>
+    🌐 部分作品引用 three.js / Tailwind 等 CDN,离线时相应作品无法渲染属正常现象;
+    卡片上的 <code>CDN</code> 徽标表示该作品含外部依赖。
+  </p>
+  <p id="footMeta" class="dim"></p>
+</footer>
+
+<!-- 对比浮层 -->
+<div class="overlay" id="compareView" hidden>
+  <div class="overlay-head">
+    <button class="ghost" id="compareBack">← 返回</button>
+    <strong id="compareTitle">对比</strong>
+    <button class="ghost danger" id="compareClose">✕ 关闭</button>
+  </div>
+  <div class="compare-grid" id="compareGrid"></div>
+</div>
+
+<!-- 详情浮层 -->
+<div class="overlay" id="detailView" hidden>
+  <div class="detail-card">
+    <div class="overlay-head detail-head">
+      <button class="ghost" id="detailPrev">← 上一幅</button>
+      <strong id="detailTitle"></strong>
+      <button class="ghost" id="detailNext">下一幅 →</button>
+      <button class="ghost" id="detailOpen">↗ 原页</button>
+      <button class="ghost danger" id="detailClose">✕</button>
+    </div>
+    <div class="detail-stage" id="detailStage"></div>
+    <div class="detail-meta" id="detailMeta"></div>
+  </div>
+</div>
+
+<!-- 对比选择托盘 -->
+<div class="tray" id="tray" hidden>
+  <span id="trayText">已选 0 幅</span>
+  <button class="primary" id="trayGo">开始对比</button>
+  <button class="ghost" id="trayClear">清空</button>
+</div>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
