@@ -46,7 +46,7 @@ raw/                  原始素材 —— 只读,未做任何改动
 | 前缀 | Harness | 模型 token | 模型 / 强度 |
 |---|---|---|---|
 | (无) | Claude Desktop | fable52Medium / fable52max | Fable 5.2 · Medium / Max |
-| (无) | Claude Desktop | opus55Medium / High / Extra | Opus 5.5 · Medium / High / Extra |
+| (无) | Claude Desktop | opus55Medium / High / Extra / Max | Opus 5.5 · Medium / High / Extra / Max |
 | `Anti_` | Antigravity | Opus55Medium、4CarbonHigh | 同上 / 4 Carbon · High |
 | `Gemini_` | Gemini Task 模式 | 4Carbon、4Argon | 不标强度 |
 | `GeminiChat_` | Gemini Chat 模式 | 4CarbonHigh、FlashLite | 4 Carbon · High / Flash Lite |

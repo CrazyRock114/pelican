@@ -1,25 +1,25 @@
 // 由 tools/generate_data.py 自动生成 — 请勿手写,重跑脚本即可刷新
 window.PELICAN_DATA = {
-  "generatedAt": "2026-11-10 12:39:46",
+  "generatedAt": "2026-11-10 13:07:28",
   "counts": {
-    "entries": 23,
-    "folders": 21,
+    "entries": 24,
+    "folders": 22,
     "dim2d": 12,
-    "dim3d": 11,
+    "dim3d": 12,
     "google": 11,
-    "anthropic": 12,
+    "anthropic": 13,
     "byModel": {
       "4carbon": 8,
       "4argon": 2,
       "flashlite": 1,
       "fable52": 4,
-      "opus55": 8
+      "opus55": 9
     },
     "byHarness": {
       "gemini-chat": 5,
       "gemini-task": 4,
       "antigravity": 4,
-      "claude-desktop": 10
+      "claude-desktop": 11
     }
   },
   "entries": [
@@ -479,6 +479,26 @@ window.PELICAN_DATA = {
       "size": 65800,
       "mtime": "11-10 04:07",
       "mtimeTs": 1794305250,
+      "title": "Pelican on a Bicycle",
+      "cdn": false,
+      "typo": false
+    },
+    {
+      "id": "3Dpelican_opus55Max__1",
+      "dim": "3D",
+      "vendor": "anthropic",
+      "model": "opus55",
+      "modelLabel": "Opus 5.5",
+      "effort": "Max",
+      "harness": "claude-desktop",
+      "harnessLabel": "Claude Desktop",
+      "attempt": null,
+      "folder": "3Dpelican_opus55Max",
+      "file": "pelican-bicycle.html",
+      "path": "raw/3Dpelican_opus55Max/pelican-bicycle.html",
+      "size": 41975,
+      "mtime": "11-10 13:02",
+      "mtimeTs": 1794337342,
       "title": "Pelican on a Bicycle",
       "cdn": false,
       "typo": false

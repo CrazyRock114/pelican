@@ -24,6 +24,7 @@ MODEL_MAP = {
     "opus55medium": ("opus55",   "Medium", "Opus 5.5",          "anthropic"),
     "opus55high":   ("opus55",   "High",   "Opus 5.5",          "anthropic"),
     "opus55extra":  ("opus55",   "Extra",  "Opus 5.5",          "anthropic"),
+    "opus55max":    ("opus55",   "Max",    "Opus 5.5",          "anthropic"),
 }
 
 MODEL_ORDER = ["4carbon", "4argon", "flashlite", "fable52", "opus55"]
