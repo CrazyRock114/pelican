@@ -55,6 +55,8 @@
       let evWorks = 0;
       for (const s of sess.scores) {
         if (!byCode.has(s.code) || !s.dims) continue;
+        // 空条目(未实际评分,仅记录覆盖范围)不计入聚合
+        if (!DIM_KEYS.some(k => Number.isInteger(s.dims[k]))) continue;
         evWorks++; scoreCount++;
         const agg = perWork.get(s.code) || { n: 0, dims: {}, sessions: new Set() };
         agg.n++; agg.sessions.add(sess.sessionId);

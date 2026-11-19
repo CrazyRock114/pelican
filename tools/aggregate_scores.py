@@ -77,14 +77,16 @@ def main():
             w = by_code.get(s.get("code"))
             if not w or not isinstance(s.get("dims"), dict):
                 continue
+            dims_in = {k: v for k in DIM_KEYS if isinstance(s["dims"].get(k), (int, float))}
+            if not dims_in:  # 空条目(未实际评分)不计入聚合
+                continue
             score_count += 1
             st["n"] += 1
             agg = per_work.setdefault(s["code"], {"n": 0, "dims": {}})
             agg["n"] += 1
             for k in DIM_KEYS:
-                v = s["dims"].get(k)
-                if isinstance(v, (int, float)):
-                    agg["dims"][k] = agg["dims"].get(k, 0) + v
+                if k in dims_in:
+                    agg["dims"][k] = agg["dims"].get(k, 0) + s["dims"][k]
 
     work_rows = []
     for code, agg in per_work.items():

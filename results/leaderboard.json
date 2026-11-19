@@ -1,0 +1,68 @@
+{
+  "generatedAt": "2026-11-18 18:50:12",
+  "sessionCount": 1,
+  "scoreCount": 1,
+  "models": [
+    {
+      "model": "4carbon",
+      "modelLabel": "Gemini 4 Carbon",
+      "n": 1,
+      "worksCount": 1,
+      "dimMeans": {
+        "faithfulness": 4.0,
+        "visual": 5.0,
+        "animation": 4.0,
+        "craft": 4.0,
+        "overall": 4.0
+      },
+      "overall": 4.0
+    }
+  ],
+  "harnesses": [
+    {
+      "harness": "antigravity",
+      "modelLabel": "antigravity",
+      "n": 1,
+      "worksCount": 1,
+      "dimMeans": {
+        "faithfulness": 4.0,
+        "visual": 5.0,
+        "animation": 4.0,
+        "craft": 4.0,
+        "overall": 4.0
+      },
+      "overall": 4.0
+    }
+  ],
+  "works": [
+    {
+      "code": "f94c2d6c",
+      "folder": "2Dpelican_Anti_4CarbonHigh",
+      "file": "index.html",
+      "dim": "2D",
+      "model": "4carbon",
+      "modelLabel": "Gemini 4 Carbon",
+      "effort": "High",
+      "harness": "antigravity",
+      "harnessLabel": "Antigravity",
+      "vendor": "google",
+      "attempt": null,
+      "n": 1,
+      "dimMeans": {
+        "faithfulness": 4.0,
+        "visual": 5.0,
+        "animation": 4.0,
+        "craft": 4.0,
+        "overall": 4.0
+      },
+      "overall": 4.0
+    }
+  ],
+  "evaluators": [
+    {
+      "name": "部署冒烟测试",
+      "type": "agent",
+      "n": 1
+    }
+  ]
+}
