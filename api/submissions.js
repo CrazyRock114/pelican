@@ -2,7 +2,7 @@
 // GET  → 返回全部评分会话 { submissions: [...], count, generatedAt }
 // POST → 校验并存储一个评分会话(Blob: submissions/<sessionId>.json)
 // CORS 全开:允许任意来源的评测者/Agent 提交与读取。
-import { put, head, list, del } from "@vercel/blob";
+import { put, list } from "@vercel/blob";
 
 const PREFIX = "submissions/";
 const MAX_BODY = 64 * 1024; // 64KB
@@ -93,15 +93,8 @@ export default async function handler(req, res) {
 
     const pathname = `${PREFIX}${payload.sessionId}.json`;
     try {
-      let exists = false;
-      try {
-        await head(pathname, { token });
-        exists = true;
-      } catch (headErr) {
-        if (headErr?.name && headErr.name !== "BlobNotFoundError") throw headErr;
-        // BlobNotFoundError → 不存在,继续写入
-      }
-      if (exists) {
+      const existing = await list({ prefix: pathname, limit: 1, token });
+      if (existing.blobs.length > 0) {
         return json(res, 409, { error: "该 sessionId 已提交过,请勿重复提交", sessionId: payload.sessionId });
       }
       const blob = await put(pathname, JSON.stringify(payload, null, 2), {
