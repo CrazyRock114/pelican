@@ -1,0 +1,14 @@
+{
+  "dims": [
+    { "key": "faithfulness", "label": "还原度",     "hint": "鹈鹕骑自行车这个主题完成得如何?主体、车辆、场景是否符合题意" },
+    { "key": "visual",       "label": "视觉美感",   "hint": "配色、构图、造型是否好看、协调" },
+    { "key": "animation",    "label": "动画与交互", "hint": "动画流畅度、可玩性、交互反馈的质量" },
+    { "key": "craft",        "label": "技术实现",   "hint": "代码产物的工程质量:结构、稳定性、性能表现" },
+    { "key": "overall",      "label": "整体印象",   "hint": "抛开单项,你 对这幅作品的总评" }
+  ],
+  "scale": { "min": 1, "max": 5 },
+  "rounds": [
+    { "id": "all",  "title": "全部作品", "include": { "dim": null } },
+    { "id": "3d",   "title": "3D 赛道",  "include": { "dim": "3D" } }
+  ]
+}

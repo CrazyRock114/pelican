@@ -1,0 +1,100 @@
+{
+  "rewrites": [
+    {
+      "source": "/w/f94c2d6c",
+      "destination": "/raw/2Dpelican_Anti_4CarbonHigh/index.html"
+    },
+    {
+      "source": "/w/81f86809",
+      "destination": "/raw/2Dpelican_Anti_Opus55Medium/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/d9d99e71",
+      "destination": "/raw/2Dpelican_GeminiChat_4CarbonHigh/2Dpelican_GeminiChat_4CarbonHigh.html"
+    },
+    {
+      "source": "/w/14c6a4da",
+      "destination": "/raw/2Dpelican_GeminiChat_4CarbonHigh/2Dpelican_GeminiChat_4CarbonHigh1.html"
+    },
+    {
+      "source": "/w/497a3998",
+      "destination": "/raw/2Dpelican_GeminiChat_4CarbonHigh/2Dpelican_GeminiChat_4CarbonHigh2.html"
+    },
+    {
+      "source": "/w/6eaf82e3",
+      "destination": "/raw/2Dpelican_Gemini_4Argon/pelican_bicycle.html"
+    },
+    {
+      "source": "/w/6a9af65e",
+      "destination": "/raw/2Dpelican_Gemini_4Carbon/pelican_bicycle.html"
+    },
+    {
+      "source": "/w/e78ae6ef",
+      "destination": "/raw/2Dpelican_fable52Medium/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/3147a4c9",
+      "destination": "/raw/2Dpelican_fable52max/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/70c7ea88",
+      "destination": "/raw/2Dpelican_opus55Extra/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/0d37fa52",
+      "destination": "/raw/2Dpelican_opus55High/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/d4bcc509",
+      "destination": "/raw/2Dpelican_opus55Medium/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/7d97a989",
+      "destination": "/raw/3Dpelican_Anti_Opus55Medium/pelican_bicycle.html"
+    },
+    {
+      "source": "/w/249f2a93",
+      "destination": "/raw/3Dpelican_GeminiChat_4CarbonHigh/3Dpelican_GeminiChat_4CarbonHigh.html"
+    },
+    {
+      "source": "/w/c04cf6aa",
+      "destination": "/raw/3Dpelican_GeminiChat_FlashLite/3Dpelican_GeminiChat_FlashLite.html"
+    },
+    {
+      "source": "/w/84d2c2c9",
+      "destination": "/raw/3Dpelican_Gemini_4Argon/pelican_bicycle.html"
+    },
+    {
+      "source": "/w/dd755330",
+      "destination": "/raw/3Dpelican_Gemini_4Carbon/pelican_bicycle.html"
+    },
+    {
+      "source": "/w/be5a6485",
+      "destination": "/raw/3Dpelican_fable52Medium/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/9e734b34",
+      "destination": "/raw/3Dpelican_fable52max/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/f91a1269",
+      "destination": "/raw/3Dpelican_opus55Extra/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/f64432e3",
+      "destination": "/raw/3Dpelican_opus55High/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/ee3bd671",
+      "destination": "/raw/3Dpelican_opus55Max/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/ecf819ab",
+      "destination": "/raw/3Dpelican_opus55Medium/pelican-bicycle.html"
+    },
+    {
+      "source": "/w/04235839",
+      "destination": "/raw/3Dpenlican_Anti_4CarbonHigh/index.html"
+    }
+  ]
+}

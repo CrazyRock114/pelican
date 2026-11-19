@@ -17,15 +17,27 @@ Gemini Task / Gemini Chat)下做的「鹈鹕骑车」测试作品做导航与对
 ## 目录
 
 ```
-index.html            导航站入口
-assets/style.css      样式(无外部依赖)
-assets/app.js         交互逻辑(无外部依赖)
-assets/data.js        作品清单(由脚本扫描 raw/ 生成)
-tools/generate_data.py 清单生成器(对 raw/ 只读)
-tools/raw_manifest_before.txt  建站前 raw/ 全部文件的 md5 基线
+index.html            导航站入口(2D/3D 浏览、筛选、并排对比)
+eval.html             🪶 盲测评测页(匿名打分,5 维 × 1–5)
+results.html          🏆 盲测排行榜(实时 API,快照兜底)
+api/submissions.js    评分后端(Vercel Blob,公开读写)
+assets/               data.js(作品清单)/ eval-data.js(匿名池)/ eval-map.js(仅揭晓页)/ 样式与逻辑
+tools/                generate_data.py / generate_eval.py / aggregate_scores.py / eval_config.json
+submissions/          离线评分文件(人工收集或 PR)
+results/              leaderboard.json 快照
+EVALUATION.md         盲测协议文档(人类与 Agent 通用)
 serve.sh              本地预览脚本
 raw/                  原始素材 —— 只读,未做任何改动
 ```
+
+## 盲测评测体系(简)
+
+- 打分入口 `eval.html`:作品匿名(随机码 + 服务端重写 `/w/<码>`),按 5 维各打 1–5 分;
+- 提交:优先 POST `/api/submissions`(Vercel Blob,需在项目环境变量配置 `BLOB_READ_WRITE_TOKEN`);
+  失败自动导出 JSON,可人工收集或 PR 进 `submissions/`;
+- 排行榜 `results.html`:优先实时拉 API,不可用时读 `results/leaderboard.json` 快照;
+- Agent 纯 API 通道与完整协议见 **[EVALUATION.md](EVALUATION.md)**;
+- 改评分维度/场次:`tools/eval_config.json` → 重跑 `python3 tools/generate_eval.py`。
 
 ## 说明
 

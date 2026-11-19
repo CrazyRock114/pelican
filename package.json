@@ -1,0 +1,9 @@
+{
+  "name": "pelican-bicycle-arena",
+  "private": true,
+  "type": "module",
+  "description": "Pelican 行车测试对比导航站 + 盲测评测体系(静态站 + Vercel Blob 评分后端)",
+  "dependencies": {
+    "@vercel/blob": "^1.1.1"
+  }
+}

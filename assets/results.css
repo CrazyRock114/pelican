@@ -1,0 +1,36 @@
+/* 排行榜页 */
+.lb-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.lb-stat { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.lb-stat b { display: block; font-size: 20px; }
+.lb-stat span { font-size: 11.5px; color: var(--text-3); }
+
+.model-row { display: flex; align-items: center; gap: 14px; padding: 12px 6px; border-bottom: 1px dashed var(--line); }
+.model-row .rank { width: 34px; text-align: center; font-size: 17px; font-weight: 800; color: var(--text-3); }
+.model-row:nth-child(1) .rank, .model-row:nth-child(2) .rank, .model-row:nth-child(3) .rank { color: var(--text); }
+.model-row .mmain { flex: 1; min-width: 0; }
+.model-row .mname { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.model-row .mname .n { font-size: 11px; color: var(--text-3); font-weight: 500; }
+.model-row .mscore { text-align: right; min-width: 92px; }
+.model-row .mscore b { font-size: 21px; font-variant-numeric: tabular-nums; }
+.model-row .mscore span { font-size: 10.5px; color: var(--text-3); display: block; }
+.dim-bars { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.dim-bar { flex: 1 1 90px; min-width: 90px; }
+.dim-bar .lbl { font-size: 10.5px; color: var(--text-3); display: flex; justify-content: space-between; }
+.dim-bar .track { height: 6px; background: var(--panel-2); border-radius: 99px; margin-top: 3px; overflow: hidden; border: 1px solid var(--line); }
+.dim-bar .fill { height: 100%; background: linear-gradient(90deg, var(--accent-a), var(--accent-b)); }
+
+.work-table, .eval-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.work-table th, .work-table td, .eval-table th, .eval-table td {
+  padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap;
+}
+.work-table th, .eval-table th { background: var(--panel-2); color: var(--text-2); font-weight: 600; }
+.work-table td.num, .eval-table td.num { text-align: center; font-variant-numeric: tabular-nums; }
+.work-table .rev { color: var(--text-2); font-size: 12px; }
+.work-table code { background: rgba(91,156,245,.08); }
+
+.badge-inline { font-size: 10.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--text-2); }
+.badge-inline.google { color: #7cb7f7; border-color: rgba(124,183,247,.4); }
+.badge-inline.anthropic { color: #eda28c; border-color: rgba(237,162,140,.4); }
+
+.empty-state { text-align: center; padding: 46px 10px; color: var(--text-3); }
+.empty-state .big { font-size: 40px; margin-bottom: 10px; }

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>盲测评测 · Pelican 行车测试</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/eval.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪶</text></svg>">
+</head>
+<body class="eval-body">
+
+<header class="masthead slim">
+  <div class="masthead-inner">
+    <div class="logo">🪶</div>
+    <h1>盲测评测<span class="grad">Blind Eval</span></h1>
+    <p class="sub">你将看到<b>匿名作品</b>(仅显示随机码)。作者、模型、Harness 全部隐藏,<b>本页任何位置都不含身份信息</b>——打完分到 <a href="results.html">排行榜</a> 才揭晓。</p>
+    <nav class="eval-nav">
+      <a href="index.html">← 导航站</a><span>·</span><a href="results.html">排行榜 / 揭晓</a><span>·</span><a href="https://github.com/CrazyRock114/pelican/blob/main/EVALUATION.md" target="_blank">评测协议 ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main class="eval-main">
+
+  <!-- ① 准备 -->
+  <section class="panel" id="setupPanel">
+    <h2>开始一场盲测</h2>
+    <div class="setup-grid">
+      <div class="field"><span class="flabel">评测场次</span>
+        <div class="round-list" id="roundList"></div>
+      </div>
+      <label>你的昵称(将公示在排行榜)
+        <input type="text" id="evalName" maxlength="40" placeholder="如:CrazyRock、GPT-5.3-judge、同事-A…">
+      </label>
+      <label>评分者类型
+        <select id="evalType">
+          <option value="human">🧑 人类</option>
+          <option value="agent">🤖 Agent(浏览器/自动化)</option>
+          <option value="llm">🧠 LLM 直接评审</option>
+        </select>
+      </label>
+    </div>
+    <p class="hint-line">评分制:每幅作品按
+      <b id="dimNames"></b> 五个维度各打 <b>1–5</b> 分(1=很差,5=优秀)。全部打完才能提交;进度自动保存在本机,可随时回来续评。
+    </p>
+    <button class="primary big" id="startBtn">开始盲测 →</button>
+    <details class="agent-api"><summary>🤖 Agent 打分通道(console API)</summary>
+      <p>本页在控制台暴露 <code>window.PELICAN_EVAL</code>,浏览器 Agent 无需点击 UI 即可完成评测:</p>
+      <pre>PE = window.PELICAN_EVAL
+PE.status()               // 进度概览
+PE.list()                 // 未完成样本码
+PE.score(code, {还原度key:4,...}, "备注")   // 打分
+PE.next() / PE.prev() / PE.goto(i)
+PE.submit("备注")          // 提交(走 API,失败自动回退导出)
+PE.exportJSON()           // 导出会话 JSON</pre>
+      <p>完整协议与 curl 通道见 <a href="https://github.com/CrazyRock114/pelican/blob/main/EVALUATION.md" target="_blank">评测协议文档 ↗</a>。</p>
+    </details>
+  </section>
+
+  <!-- ② 打分 -->
+  <section class="panel" id="scorePanel" hidden>
+    <div class="score-topbar">
+      <button class="ghost" id="quitBtn">⏸ 暂停/退出</button>
+      <span id="roundBadge"></span>
+      <div class="progress"><div class="bar" id="progressBar"></div></div>
+      <span class="progress-text" id="progressText"></span>
+    </div>
+    <div class="score-grid">
+      <div class="sample-box">
+        <div class="sample-badge">匿名样本 <b id="sampleIdx"></b> · 码 <code id="sampleCode"></code></div>
+        <div class="sample-frame" id="sampleFrame"></div>
+        <div class="sample-nav">
+          <button class="ghost" id="prevBtn">← 上一个</button>
+          <span class="sample-hint">键盘:← → 切换 · 1–5 给当前维度打分 · Tab 切维度</span>
+          <button class="ghost" id="nextBtn">下一个 →</button>
+        </div>
+      </div>
+      <div class="score-box" id="dimList"></div>
+    </div>
+    <div class="comment-row">
+      <textarea id="commentBox" rows="2" maxlength="500" placeholder="备注(可选):这幅作品的亮点/问题一句话…"></textarea>
+    </div>
+    <div class="score-footer">
+      <span class="hint-line" id="autoSaveHint">已自动保存到本机</span>
+      <button class="primary big" id="finishBtn">完成,去提交 →</button>
+    </div>
+  </section>
+
+  <!-- ③ 提交 -->
+  <section class="panel" id="reviewPanel" hidden>
+    <h2>确认并提交</h2>
+    <p class="hint-line" id="reviewSummary"></p>
+    <div class="review-table-wrap"><table class="review-table" id="reviewTable"></table></div>
+    <div class="review-actions">
+      <button class="ghost" id="backBtn">← 回去改分</button>
+      <button class="ghost" id="exportBtn">⬇ 导出 JSON(离线通道)</button>
+      <button class="primary big" id="submitBtn">✓ 提交评分</button>
+    </div>
+    <div class="submit-result" id="submitResult" hidden></div>
+  </section>
+
+</main>
+
+<footer class="eval-foot">
+  <p>🪶 匿名保证:本页不加载任何映射文件,作品 URL 经服务端重写(<code>/w/&lt;码&gt;</code>)。
+     技术上属「界面级盲测」——仓库公开,意志坚定的审查者仍可从仓库配置反查映射,请以此为承诺自律。</p>
+  <p id="evalMeta"></p>
+</footer>
+
+<script src="assets/eval-data.js"></script>
+<script src="assets/eval.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>排行榜 · 盲测结果揭晓</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/eval.css">
+<link rel="stylesheet" href="assets/results.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏆</text></svg>">
+</head>
+<body>
+
+<header class="masthead slim">
+  <div class="masthead-inner">
+    <div class="logo">🏆</div>
+    <h1>盲测排行榜<span class="grad">Results</span></h1>
+    <p class="sub">匿名评分的汇总与身份揭晓 · 数据源:<b id="sourceBadge">检测中…</b></p>
+    <nav class="eval-nav">
+      <a href="index.html">← 导航站</a><span>·</span><a href="eval.html">🪶 我也要盲测打分</a><span>·</span><a href="https://github.com/CrazyRock114/pelican/blob/main/EVALUATION.md" target="_blank">评测协议 ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main class="eval-main">
+  <div id="resultsRoot">
+    <section class="panel">
+      <p class="hint-line">⏳ 正在拉取评分数据…</p>
+    </section>
+  </div>
+</main>
+
+<footer class="eval-foot">
+  <p>聚合口径:同一会话内对同一作品只计一次;模型排名按其全部作品的评分加权平均;快照文件 <code>results/leaderboard.json</code> 由 <code>tools/aggregate_scores.py</code> 生成。</p>
+  <p id="resultsMeta"></p>
+</footer>
+
+<script src="assets/data.js"></script>
+<script src="assets/eval-map.js"></script>
+<script src="assets/results.js"></script>
+</body>
+</html>
